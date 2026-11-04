@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v8', KEY='geldmanager-v1';
+const VERSION='gm-v9', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -152,15 +152,35 @@ function matchKat(mid){const n=normKey(mid);const fz=fuzz(mid);
  let raw=mid.replace(/^[\s|Il\[\]!:]+|[\s|Il\[\]!:]+$/g,'');let mandant='';
  for(const m of Object.keys(state.mandanten))if(normKey(raw).startsWith(normKey(m))){mandant=m;raw=raw.slice(m.length).replace(/^[\s·•.,:\-]+/,'');break}
  return{mandant,kat:raw.trim(),known:false}}
+// OCR-Verwechsler im Betrag vor "EUR" (O→0, l→1, S→5, B→8), "EUH"/"FUR" → EUR
+function normAmtLine(l){l=l.replace(/\b(?:EUR0?|EURO|EUH|FUR|EUA|ELR|EUP)\b/gi,'EUR');
+ const map=x=>x.replace(/[OoQD]/g,'0').replace(/[lI|!]/g,'1').replace(/S/g,'5').replace(/B/g,'8');
+ return l.replace(/(^|[^0-9A-Za-z])([0-9OoQDlI|!SB]{1,5})\s*([,.])\s*([0-9OoQDlI|!SB]{2})(?=\s*(?:€|EUR))/g,(m,pre,a,c,b)=>{const A=map(a),Bc=map(b);return /^\d+$/.test(A)&&/^\d{2}$/.test(Bc)&&/\d/.test(a+b)?pre+A+','+Bc:m})}
+// Geldschein-Icon vor dem Betrag wird oft als Ziffer gelesen (z. B. "E278,90" statt 78,90):
+// anhand der Zeichen-Positionen abschneiden, was nicht zur Zahl gehört (Lücke, andere Höhe, Überlappung)
+function fixAmtWord(w){const s=w.symbols||[],t=w.text||'';if(/\d\.\d{3}[,.]\d{2}/.test(t))return null;const m=t.match(/(\d+)[,.](\d{2})(?!\d)/);
+ if(!m||s.length!==[...t].length||m[1].length<2)return null;const ci=m.index+m[1].length;if(!/[,.]/.test(s[ci].text))return null;
+ const cents=s.slice(ci+1,ci+3);if(cents.length<2)return null;const hh=y=>y.bbox.y1-y.bbox.y0,H=Math.max(...cents.map(hh));if(!(H>0))return null;
+ let k=ci-1,keep=0,rightX=s[ci].bbox.x0;
+ while(k>=m.index){const y=s[k],gap=rightX-y.bbox.x1;
+  if(Math.abs(hh(y)-H)>.15*H||gap>(k===ci-1?.45:.22)*H||gap<-.15*H)break;
+  if(k>0&&s[k-1].bbox.x1>y.bbox.x0+.2*(y.bbox.x1-y.bbox.x0))break;
+  keep++;rightX=y.bbox.x0;k--}
+ if(!keep||keep===m[1].length)return null;return t.slice(0,m.index)+' '+t.slice(ci-keep)}
+function fixAmounts(data){let text=(data&&data.text)||'';try{const words=[];for(const b of data.blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[])for(const w of l.words||[])words.push(w);
+ let pos=0;for(const w of words){const t=w.text||'';if(!t)continue;const i=text.indexOf(t,pos);if(i<0)continue;const fx=fixAmtWord(w);
+  if(fx&&fx!==t){text=text.slice(0,i)+fx+text.slice(i+t.length);pos=i+fx.length}else pos=i+t.length}}catch(e){console.warn(e)}return text}
 const HEAD=/(?:^|[^\d])(\d{6})(?!\d{2})\d?\s*[|Il1!\]\[:]?\s+(.*?)\s*[|Il!\]\[:]?\s*(\d{1,2})\s*[.,]\s*(\d{1,2})\s*[.,]\s*(\d{4})/;
 function parseOcr(text){let lines=text.split(/\n/).map(l=>l.replace(/[—–]/g,'-').replace(/\s+/g,' ').trim()).filter(Boolean);for(let i=0;i<lines.length-1;i++)if(/^\D{0,3}\d{6}\D/.test(lines[i])&&!HEAD.test(lines[i])&&/^\D{0,3}\d{1,2}\s*[.,]\s*\d{1,2}\s*[.,]\s*\d{4}/.test(lines[i+1])){lines[i]+=' '+lines[i+1];lines.splice(i+1,1)}
  const out=[];let cur=null;
  for(const l of lines){const h=l.match(HEAD);
   if(h){const km=matchKat(h[2]);cur={nr:h[1],date:`${h[5]}-${h[4].padStart(2,'0')}-${h[3].padStart(2,'0')}`,...km,kunde:'',cents:NaN,lines:[]};out.push(cur);continue}
   if(cur)cur.lines.push(l)}
+ // abgeschnittene letzte Karte (nur Kopfzeile, kein Betrag) ignorieren
+ if(out.length){const L=out[out.length-1];if(!L.lines.some(l=>/[a-zäöü]{3}/i.test(l)||/\d[,.]\d\d\s*(€|EUR)/i.test(l)))out.pop()}
  for(const o of out){o.kunde=(o.lines.find(l=>/[a-zäöü]{3}/i.test(l)&&!/^(gp|händler|haendler)/i.test(l))||'').slice(0,60);
   let amt=null;for(const l of o.lines){if(/\b(gp|händler|haendler|nr)\b/i.test(l))continue;
-   const ms=[...l.matchAll(/(\d{1,3}(?:\.\d{3})+|\d+)\s*[,.]\s*(\d{2})\s*(€|EUR|E\b)/gi)];if(ms.length)amt=ms[ms.length-1];
+   const ln=normAmtLine(l);const ms=[...ln.matchAll(/(\d{1,3}(?:\.\d{3})+|\d+)\s*[,.]\s*(\d{2})\s*(€|EUR|E\b)/gi)];if(ms.length)amt=ms[ms.length-1];
    else if(amt==null){const m2=l.match(/(?:pauschale|betrag)\D*(\d+)\s*[,.]\s*(\d{2})/i);if(m2)amt=m2}}
   if(amt)o.cents=parseInt(amt[1].replace(/\D/g,''),10)*100+parseInt(amt[2],10);delete o.lines}
  return out.length?out:parseApp(text)}
@@ -211,8 +231,8 @@ async function handlePhotos(files){files=[...(files||[])];if(!files.length||ocrB
      const label=`Lese Bild ${i+1}/${files.length} · Durchgang ${j+1}/${SIZES.length} …`;const step=i*SIZES.length+j;ocrStatus(label,step/tot);
      ocrProg=p=>ocrStatus(null,(step+p)/tot);
      const canvas=await prep(img,SIZES[j]);
-     let data;try{({data}=await withTimeout(w.recognize(canvas),passTimeout(),'Zeitüberschreitung beim Lesen'))}catch(e){await killOcr();throw e}
-     passes.push(parseOcr(data.text||''))}
+     let data;try{({data}=await withTimeout(w.recognize(canvas,{},{text:true,blocks:true}),passTimeout(),'Zeitüberschreitung beim Lesen'))}catch(e){await killOcr();throw e}
+     passes.push(parseOcr(fixAmounts(data)))}
     const v=vote(passes);if(!v.length)empty++;found.push(...v)}
    catch(e){console.warn(e);errors.push(`Bild ${i+1}: ${e.message||e}`)}}
  }catch(e){console.warn(e);errors.push(e.message||String(e))}
@@ -263,7 +283,7 @@ function renderReview(){const el=$('#review');el.hidden=false;const opt=(a,v)=>a
   reviewRows=reviewRows.filter(r=>!r.on);if(!reviewRows.length)el.hidden=true;else{markRows(false);renderReview()}
   if(sel[0]){const[y,m]=sel[0].date.split('-');cur={y:+y,m:+m-1}}render();toast(`${sel.length} gebucht`)}}
 $('#photoBtn').onclick=()=>$('#photoFile').click();$('#photoFile').onchange=e=>handlePhotos(e.target.files);
-window.GM_parseOcr=parseOcr;window.GM_vote=vote;
+window.GM_parseOcr=parseOcr;window.GM_fixAmounts=fixAmounts;window.GM_vote=vote;
 
 $('#katBack').onclick=closeKat;
 fromFragment();render();
