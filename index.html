@@ -1,0 +1,38 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Geldmanager"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="styles.css"><title>Geldmanager</title></head><body>
+<header><h1>💶 Geldmanager</h1><div class="month"><button id="prev" aria-label="Vormonat">‹</button><span id="mlabel"></span><button id="next" aria-label="Nächster Monat">›</button></div></header>
+<nav><button data-tab="list" class="on">Buchungen</button><button data-tab="sum">Übersicht</button><button data-tab="set">Einstellungen</button></nav>
+<main>
+<section id="tab-list">
+ <div class="total">Monatssumme <b id="total"></b></div>
+ <button id="addBtn" class="primary">+ Neue Buchung</button>
+ <form id="form" hidden>
+  <h2 id="formTitle">Neue Buchung</h2>
+  <label>Auftragsnummer<input id="f-nr" inputmode="numeric" required></label>
+  <div id="dupWarn" class="warn" hidden></div>
+  <label>Datum<input id="f-date" type="date" required></label>
+  <label>Mandant<select id="f-mandant"></select></label>
+  <label>Kategorie<select id="f-kat"></select></label>
+  <label>Person<select id="f-person"></select></label>
+  <label>Betrag (€)<input id="f-betrag" inputmode="decimal" placeholder="0,00" required></label>
+  <div class="row"><button type="submit" class="primary" id="save">Speichern</button><button type="button" id="cancel">Abbrechen</button></div>
+ </form>
+ <ul id="list"></ul>
+</section>
+<section id="tab-sum" hidden><div id="sums"></div></section>
+<section id="tab-set" hidden>
+ <h2>Personen</h2><div id="persons" class="chips"></div>
+ <div class="row"><input id="newPerson" placeholder="Neue Person"><button id="addPerson">Hinzufügen</button></div>
+ <h2>Mandanten &amp; Kategorien</h2><div id="mandanten"></div>
+ <div class="row"><input id="newMandant" placeholder="Neuer Mandant"><button id="addMandant">Hinzufügen</button></div>
+ <h2>Backup</h2><p class="hint">Alle Daten liegen nur auf diesem Handy. Mach ab und zu ein Backup.</p>
+ <div class="row wrap"><button id="expJson">Export JSON</button><button id="expCsv">Export CSV</button><button id="impBtn">Import JSON</button></div>
+ <input type="file" id="impFile" accept="application/json,.json" hidden>
+ <p class="hint">Version <span id="ver"></span></p>
+</section>
+</main><div id="toast" hidden></div>
+<script src="app.js"></script></body></html>
