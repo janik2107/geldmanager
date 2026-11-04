@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v2', KEY='geldmanager-v1';
+const VERSION='gm-v3', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -128,7 +128,7 @@ async function handlePhotos(files){files=[...files];if(!files.length)return;$('#
  catch(e){$('#ocrStatus').hidden=true;toast('Fehler: '+e.message)}finally{$('#photoBtn').disabled=false;$('#photoFile').value=''}}
 // Mehrere OCR-Durchgänge, pro Feld Mehrheitsentscheid (gegen OCR-Rauschen)
 function vote(passes){const cnt={};passes.forEach(p=>cnt[p.length]=(cnt[p.length]||0)+1);const n=+Object.entries(cnt).sort((a,b)=>b[1]-a[1]||b[0]-a[0])[0][0];
- const use=passes.filter(p=>p.length===n);const pick=(vals,tie)=>{const c={};vals.forEach(v=>c[v]=(c[v]||0)+1);const best=Object.entries(c).sort((a,b)=>b[1]-a[1]||tie(a[0],b[0]))[0];return{v:best[0],sure:best[1]>vals.length/2}};
+ const use=passes.filter(p=>p.length===n);const pick=(vals,tie)=>{const c={};vals.forEach(v=>c[v]=(c[v]||0)+1);const best=Object.entries(c).sort((a,b)=>b[1]-a[1]||tie(a[0],b[0]))[0];if(!best)return{v:undefined,sure:false};return{v:best[0],sure:best[1]>vals.length/2}};
  return Array.from({length:n},(_,i)=>{const os=use.map(p=>p[i]);const o={...os[0]};const warn=[];
   const nr=pick(os.map(x=>x.nr),(a,b)=>0);o.nr=nr.v;if(!nr.sure)warn.push('Auftragsnr. unsicher');
   const am=pick(os.map(x=>x.cents).filter(Number.isFinite).map(String),(a,b)=>a-b);if(am.v!==undefined){o.cents=+am.v;if(!am.sure)warn.push('Betrag unsicher')}
@@ -154,7 +154,7 @@ function renderReview(){const el=$('#review');el.hidden=false;const opt=(a,v)=>a
   if(f!=='on')r.touched=true;if(f==='on')r.on=inp.checked;else if(f==='betrag')r.cents=parseEur(inp.value);else{r[f]=inp.value.trim();if(f==='mandant')r.kat=(state.mandanten[r.mandant]||[]).includes(r.kat)?r.kat:''}
   markRows(false);renderReview()}));
  $('#rvCancel').onclick=()=>{reviewRows=[];el.hidden=true};
- $('#rvBook').onclick=()=>{const sel=reviewRows.filter(r=>r.on);const bad=sel.filter(r=>r.notes.length);
+ $('#rvBook').onclick=()=>{const sel=reviewRows.filter(r=>r.on);if(!sel.length){toast('Nichts ausgewählt');return}const bad=sel.filter(r=>r.notes.length);
   if(bad.length){toast(`${bad.length} markierte Zeile(n) erst korrigieren oder abwählen`);return}
   sel.forEach(r=>state.bookings.push({id:uid(),nr:r.nr,date:r.date,mandant:r.mandant,kat:r.kat,person:r.person,cents:r.cents}));save();
   reviewRows=reviewRows.filter(r=>!r.on);if(!reviewRows.length)el.hidden=true;else{markRows(false);renderReview()}
