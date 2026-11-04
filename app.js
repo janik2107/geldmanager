@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v6', KEY='geldmanager-v1';
+const VERSION='gm-v7', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -34,13 +34,38 @@ function fromFragment(){const h=location.hash;if(!h.startsWith('#import='))retur
  catch(e){toast('Setup-Link ungültig')}
  history.replaceState(null,'',location.pathname+location.search)}
 function monthItems(){const p=`${cur.y}-${String(cur.m+1).padStart(2,'0')}`;return state.bookings.filter(b=>b.date.startsWith(p)).sort((a,b)=>b.date.localeCompare(a.date)||b.nr.localeCompare(a.nr))}
+const WDAYS=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+const isoDay=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function dayLabel(iso){if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||''))return 'Ohne Datum';const t=new Date(),y=new Date();y.setDate(t.getDate()-1);
+ if(iso===isoDay(t))return 'Heute';if(iso===isoDay(y))return 'Gestern';const[a,b,c]=iso.split('-').map(Number);const d=new Date(a,b-1,c);
+ return `${WDAYS[d.getDay()]}, ${c}. ${MONTHS[b-1]}${a!==t.getFullYear()?' '+a:''}`}
+function byDay(items,key=b=>b.date){const m=new Map();items.forEach((b,i)=>{const k=key(b)||'';if(!m.has(k))m.set(k,[]);m.get(k).push([b,i])});return [...m.entries()].sort((a,b)=>b[0].localeCompare(a[0]))}
+const plural=(n,a,b)=>`${n} ${n===1?a:b}`;
+function dayHead(iso,list,word=['Buchung','Buchungen']){const sum=list.reduce((s,[b])=>s+(Number.isFinite(b.cents)?b.cents:0),0);
+ return `<div class="dh"><span>${esc(dayLabel(iso))}</span><span>${plural(list.length,word[0],word[1])} · <b>${eur(sum)}</b></span></div>`}
+const initial=s=>esc((String(s||'?').match(/[A-Za-zÄÖÜäöü0-9]/)||['?'])[0].toUpperCase());
+const hue=s=>{let h=0;for(const c of String(s))h=(h*31+c.charCodeAt(0))%360;return h};
+function dayList(items,o={}){if(!items.length)return `<div class="group"><div class="empty">Keine Buchungen in diesem Monat</div></div>`;
+ return byDay(items).map(([d,list])=>`<section class="day">${dayHead(d,list)}<ul class="group bl">${list.map(([b])=>`<li>
+ <span class="av" style="--h:${hue(o.kat?b.kat:b.person)}">${initial(o.kat?b.kat:b.person)}</span>
+ <div class="mid"><div class="t">${o.kat?esc(b.kat):esc(b.nr)}</div><div class="s">${o.kat?`${esc(b.nr)} · ${esc(b.mandant)} · ${esc(b.person)}`:esc(b.person)}</div></div>
+ <div class="end"><div class="b">+${eur(b.cents)}</div><div class="act"><button data-edit="${b.id}">Bearbeiten</button><button class="del" data-del="${b.id}">Löschen</button></div></div></li>`).join('')}</ul></section>`).join('')}
+let katView=null;
+function renderKat(){const el=$('#tab-kat');if(!katView){el.hidden=true;return}
+ const items=monthItems().filter(b=>b.mandant===katView.m&&b.kat===katView.k);const sum=items.reduce((s,b)=>s+b.cents,0);
+ $('#katName').textContent=katView.k;$('#katMandant').textContent=katView.m;$('#katIcon').textContent=(katView.k.match(/[A-Za-zÄÖÜäöü0-9]/)||['?'])[0].toUpperCase();$('#katIcon').style.setProperty('--h',hue(katView.k));
+ $('#katTotal').textContent=eur(sum);$('#katCount').textContent=plural(items.length,'Buchung','Buchungen');$('#katList').innerHTML=dayList(items)}
+function openKat(m,k){katView={m,k};$('#tab-sum').hidden=true;$('#tab-kat').hidden=false;renderKat();scrollTo(0,0)}
+function closeKat(){katView=null;$('#tab-kat').hidden=true;$('#tab-sum').hidden=false;scrollTo(0,0)}
 function render(){document.querySelectorAll('.mlabel').forEach(e=>e.textContent=`${MONTHS[cur.m]} ${cur.y}`);const items=monthItems();
- $('#total').textContent=eur(items.reduce((s,b)=>s+b.cents,0));$('#count').textContent=`${items.length} Buchung${items.length===1?'':'en'}`;
- $('#list').innerHTML=items.length?items.map(b=>`<li><div><div class="t">${esc(b.nr)} · ${esc(b.kat)}</div><div class="s">${fmtDate(b.date)} · ${esc(b.mandant)} · ${esc(b.person)}</div></div>
- <div><div class="b">${eur(b.cents)}</div><div class="act"><button data-edit="${b.id}">Bearbeiten</button><button class="del" data-del="${b.id}">Löschen</button></div></div></li>`).join(''):'<li class="empty">Keine Buchungen in diesem Monat</li>';
+ $('#total').textContent=eur(items.reduce((s,b)=>s+b.cents,0));$('#count').textContent=plural(items.length,'Buchung','Buchungen');
+ $('#list').innerHTML=dayList(items,{kat:true});
  const group=k=>{const m={};items.forEach(b=>m[b[k]]=(m[b[k]]||0)+b.cents);return Object.entries(m).sort((a,b)=>b[1]-a[1])};
  const card=(t,rows)=>`<p class="gh">${t}</p><div class="group card">${rows.length?rows.map(([k,v])=>`<div><span>${esc(k)}</span><b>${eur(v)}</b></div>`).join(''):'<div><span>–</span></div>'}</div>`;
- $('#sums').innerHTML=`<div class="hero"><span>Monatssumme</span><b id="sumTotal">${eur(items.reduce((s,b)=>s+b.cents,0))}</b><small>${items.length} Buchungen</small></div>`+card('Pro Mandant',group('mandant'))+card('Pro Kategorie',group('kat'))+card('Pro Person',group('person'));
+ const kats={};items.forEach(b=>{const k=b.mandant+'|'+b.kat;(kats[k]=kats[k]||{c:0,n:0});kats[k].c+=b.cents;kats[k].n++});const kr=Object.entries(kats).sort((a,b)=>b[1].c-a[1].c);
+ const katCard=`<p class="gh">Pro Kategorie</p><div class="group kcard">${kr.length?kr.map(([k,v])=>{const[m,...r]=k.split('|');const kt=r.join('|');return `<button class="krow" data-kat="${esc(k)}"><span class="av" style="--h:${hue(kt)}">${initial(kt)}</span><span class="kn">${esc(kt)}<small>${esc(m)} · ${plural(v.n,'Buchung','Buchungen')}</small></span><b>${eur(v.c)}</b><i class="chev">›</i></button>`}).join(''):'<div class="empty">–</div>'}</div>`;
+ $('#sums').innerHTML=`<div class="hero"><span>Monatssumme</span><b id="sumTotal">${eur(items.reduce((s,b)=>s+b.cents,0))}</b><small>${plural(items.length,'Buchung','Buchungen')}</small></div>`+katCard+card('Pro Mandant',group('mandant'))+card('Pro Person',group('person'));
+ renderKat();
  $('#persons').innerHTML=state.persons.map(p=>`<span class="chip">${esc(p)}<button data-delp="${esc(p)}" aria-label="entfernen">✕</button></span>`).join('');
  $('#mandanten').innerHTML=Object.entries(state.mandanten).map(([m,ks])=>`<div class="group m"><b>${esc(m)}</b><div class="chips">${ks.map(k=>`<span class="chip">${esc(k)}<button data-delk="${esc(m)}|${esc(k)}">✕</button></span>`).join('')}</div>
  <div class="row"><input placeholder="Neue Kategorie" data-newk="${esc(m)}"><button class="tinted" data-addk="${esc(m)}" style="flex:0 0 52px">＋</button></div></div>`).join('');
@@ -63,9 +88,10 @@ $('#form').addEventListener('submit',e=>{e.preventDefault();const b={id:editId||
  save();const[y,m]=b.date.split('-');cur={y:+y,m:+m-1};toast(editId?'Geändert':'Gespeichert');closeForm();render()});
 $('#addBtn').onclick=()=>openForm();$('#cancel').onclick=closeForm;
 document.querySelectorAll('.mprev').forEach(b=>b.onclick=()=>{cur.m--;if(cur.m<0){cur.m=11;cur.y--}render()});document.querySelectorAll('.mnext').forEach(b=>b.onclick=()=>{cur.m++;if(cur.m>11){cur.m=0;cur.y++}render()});
-document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('on',x===b));['list','sum','set'].forEach(t=>$('#tab-'+t).hidden=t!==b.dataset.tab);scrollTo(0,0)});
-document.addEventListener('click',e=>{const t=e.target,d=t.dataset;
- if(d.edit)openForm(state.bookings.find(b=>b.id===d.edit));
+document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('on',x===b));katView=null;$('#tab-kat').hidden=true;['list','sum','set'].forEach(t=>$('#tab-'+t).hidden=t!==b.dataset.tab);scrollTo(0,0)});
+document.addEventListener('click',e=>{const kr=e.target.closest&&e.target.closest('[data-kat]');if(kr){const[m,...k]=kr.dataset.kat.split('|');openKat(m,k.join('|'));return}
+ const t=e.target,d=t.dataset;
+ if(d.edit){if($('#tab-list').hidden)document.querySelector('.tabbar [data-tab=list]').click();openForm(state.bookings.find(b=>b.id===d.edit));$('#form').scrollIntoView({block:'start'})}
  else if(d.del){const b=state.bookings.find(x=>x.id===d.del);if(b&&confirm(`Buchung ${b.nr} (${eur(b.cents)}) löschen?`)){state.bookings=state.bookings.filter(x=>x.id!==d.del);save();render();toast('Gelöscht')}}
  else if(d.delp){if(state.bookings.some(b=>b.person===d.delp))return toast('Person hat noch Buchungen');state.persons=state.persons.filter(p=>p!==d.delp);save();render()}
  else if(d.delk){const[m,k]=d.delk.split('|');if(state.bookings.some(b=>b.mandant===m&&b.kat===k))return toast('Kategorie hat noch Buchungen');state.mandanten[m]=state.mandanten[m].filter(x=>x!==k);if(!state.mandanten[m].length)delete state.mandanten[m];save();render()}
@@ -216,7 +242,7 @@ function markRows(init){const seen={};reviewRows.forEach(r=>{r.notes=init?[...(r
  if(seen[r.nr])r.notes.push('Doppelt in diesem Import');seen[r.nr]=1;if(!Number.isFinite(r.cents))r.notes.push('Betrag fehlt');if(init&&r.notes.length)r.on=false})}
 function renderReview(){const el=$('#review');el.hidden=false;const opt=(a,v)=>a.map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('');
  el.innerHTML=`<p class="gh">Erkannte Aufträge (${reviewRows.length})</p><div class="group pad"><label class="cell" style="padding:0">Person für alle<select id="rvAll">${opt(state.persons,'Janik')}</select></label></div>`+
- reviewRows.map((r,i)=>`<div class="rv${r.notes.length?' flag':''}"><div class="h"><input type="checkbox" data-rv="${i}" data-f="on"${r.on?' checked':''}><b>${esc(r.nr)}</b><span style="margin-left:auto;font-weight:600">${Number.isFinite(r.cents)?eur(r.cents):'–'}</span></div>
+ byDay(reviewRows).map(([d,list])=>`<section class="day">${dayHead(d,list,['Auftrag','Aufträge'])}`+list.map(([r,i])=>`<div class="rv${r.notes.length?' flag':''}"><div class="h"><input type="checkbox" data-rv="${i}" data-f="on"${r.on?' checked':''}><b>${esc(r.nr)}</b><span style="margin-left:auto;font-weight:600">${Number.isFinite(r.cents)?eur(r.cents):'–'}</span></div>
  <div class="k">${esc(r.kunde||'Kunde unbekannt')}</div><div class="g">
  <div><label>Auftragsnr.</label><input data-rv="${i}" data-f="nr" value="${esc(r.nr)}" inputmode="numeric"></div>
  <div><label>Datum</label><input type="date" data-rv="${i}" data-f="date" value="${esc(r.date)}"></div>
@@ -224,7 +250,7 @@ function renderReview(){const el=$('#review');el.hidden=false;const opt=(a,v)=>a
  <div><label>Kategorie</label><select data-rv="${i}" data-f="kat">${r.known?'':`<option selected value="">${esc(r.kat||'–')} ?</option>`}${opt(state.mandanten[r.mandant]||[],r.kat)}</select></div>
  <div><label>Betrag €</label><input data-rv="${i}" data-f="betrag" inputmode="decimal" value="${Number.isFinite(r.cents)?(r.cents/100).toFixed(2).replace('.',','):''}"></div>
  <div><label>Person</label><select data-rv="${i}" data-f="person">${opt(state.persons,r.person)}</select></div></div>
- ${r.notes.length?`<div class="note">⚠︎ ${r.notes.join(' · ')}</div>`:''}</div>`).join('')+
+ ${r.notes.length?`<div class="note">⚠︎ ${r.notes.join(' · ')}</div>`:''}</div>`).join('')+'</section>').join('')+
  `<div class="row"><button id="rvCancel">Verwerfen</button><button id="rvBook" class="primary">Buchen (${reviewRows.filter(r=>r.on).length})</button></div>`;
  $('#rvAll').onchange=e=>{reviewRows.forEach(r=>r.person=e.target.value);renderReview()};
  el.querySelectorAll('[data-rv]').forEach(inp=>inp.addEventListener('change',e=>{const r=reviewRows[+inp.dataset.rv],f=inp.dataset.f;
@@ -239,5 +265,6 @@ function renderReview(){const el=$('#review');el.hidden=false;const opt=(a,v)=>a
 $('#photoBtn').onclick=()=>$('#photoFile').click();$('#photoFile').onchange=e=>handlePhotos(e.target.files);
 window.GM_parseOcr=parseOcr;window.GM_vote=vote;
 
+$('#katBack').onclick=closeKat;
 fromFragment();render();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
