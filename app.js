@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v9', KEY='geldmanager-v1';
+const VERSION='gm-v10', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -167,9 +167,31 @@ function fixAmtWord(w){const s=w.symbols||[],t=w.text||'';if(/\d\.\d{3}[,.]\d{2}
   if(k>0&&s[k-1].bbox.x1>y.bbox.x0+.2*(y.bbox.x1-y.bbox.x0))break;
   keep++;rightX=y.bbox.x0;k--}
  if(!keep||keep===m[1].length)return null;return t.slice(0,m.index)+' '+t.slice(ci-keep)}
-function fixAmounts(data){let text=(data&&data.text)||'';try{const words=[];for(const b of data.blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[])for(const w of l.words||[])words.push(w);
- let pos=0;for(const w of words){const t=w.text||'';if(!t)continue;const i=text.indexOf(t,pos);if(i<0)continue;const fx=fixAmtWord(w);
-  if(fx&&fx!==t){text=text.slice(0,i)+fx+text.slice(i+t.length);pos=i+fx.length}else pos=i+t.length}}catch(e){console.warn(e)}return text}
+const med=a=>{a=[...a].sort((x,y)=>x-y);return a.length?a[a.length>>1]:0};
+// Betrag direkt vor "EUR" anhand der Zeichen-Positionen lesen: Geldschein-Icon (breiter, überlappender Zeichen-Haufen
+// am Wortanfang) abschneiden; fehlt das Komma (bei dünner Schrift häufig), sind die letzten 2 Ziffern die Cent.
+function amtBeforeEur(w){const s=(w.symbols||[]).filter(y=>y&&y.bbox&&y.text);if(!s.length)return null;
+ const hh=y=>y.bbox.y1-y.bbox.y0,ww=y=>y.bbox.x1-y.bbox.x0;const dig=s.filter(y=>/^\d$/.test(y.text));if(dig.length<3)return null;
+ const H=med(dig.map(hh));let x1=s[0].bbox.x1,j=1;while(j<s.length&&s[j].bbox.x0<x1+.12*H){x1=Math.max(x1,s[j].bbox.x1);j++}
+ const rest=s.slice(j),rd=rest.filter(y=>/^\d$/.test(y.text)),mw=med(rd.map(ww));
+ const icon=j<s.length&&rd.length>=3&&((x1-s[0].bbox.x0)>1.6*mw||!/^\d$/.test(s[0].text)&&j>0);
+ // ein einzelnes, sehr breites Ziffer-Zeichen = Icon und erste Ziffer verschmolzen → Ziffer behalten
+ const merged=icon&&j===1&&/^\d$/.test(s[0].text)&&ww(s[0])>2.5*mw;
+ const body=icon?(merged?s:rest):s,bt=body.map(y=>y.text).join('');
+ let m=bt.match(/(\d+)[,.](\d{2})\D*$/);if(m)return{v:m[1].replace(/^0+(?=\d)/,'')+','+m[2],icon};
+ const d=body.filter(y=>/^\d$/.test(y.text)).map(y=>y.text).join('');if(d.length<3||d.length>6)return null;
+ return{v:d.slice(0,-2).replace(/^0+(?=\d)/,'')+','+d.slice(-2),icon,noComma:true}}
+const EUR_W=/^(?:EUR|EUH|FUR|EUA|ELR|EUP|EURO|€)/i;
+function fixAmounts(data){let text=(data&&data.text)||'';try{const lines=[];for(const b of data.blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[])lines.push(l);
+ let pos=0;for(const l of lines){const ws=(l.words||[]).filter(w=>w&&w.text);
+  for(let i=0;i<ws.length;i++){const w=ws[i],t=w.text;const at=text.indexOf(t,pos);if(at<0)continue;let fx=null;
+   const nextEur=ws[i+1]&&EUR_W.test(ws[i+1].text)||/\d€$/.test(t);
+   if(nextEur&&!/\d[,.]\d{2}(?!\d)/.test(t)){const a=amtBeforeEur(w);if(a&&(a.icon||a.noComma))fx=' '+a.v+(/€$/.test(t)?' €':'')}
+   if(!fx)fx=fixAmtWord(w);
+   if(fx&&fx!==t){text=text.slice(0,at)+fx+text.slice(at+t.length);pos=at+fx.length}else pos=at+t.length}}}catch(e){console.warn(e)}return text}
+// Notnagel: kein sauberer Betrag, aber Ziffern direkt vor "EUR" → vorschlagen und als unsicher markieren
+function guessAmt(lines){for(const l of lines){const n=normAmtLine(l);const m=n.match(/([0-9][0-9 ,.]{1,9}[0-9])\s*(?:€|EUR)\b/i);if(!m)continue;
+ const d=m[1].replace(/\D/g,'');if(d.length<3)continue;const c=d.length>=5?d.slice(-4):d;return parseInt(c.slice(0,-2),10)*100+parseInt(c.slice(-2),10)}return NaN}
 const HEAD=/(?:^|[^\d])(\d{6})(?!\d{2})\d?\s*[|Il1!\]\[:]?\s+(.*?)\s*[|Il!\]\[:]?\s*(\d{1,2})\s*[.,]\s*(\d{1,2})\s*[.,]\s*(\d{4})/;
 function parseOcr(text){let lines=text.split(/\n/).map(l=>l.replace(/[—–]/g,'-').replace(/\s+/g,' ').trim()).filter(Boolean);for(let i=0;i<lines.length-1;i++)if(/^\D{0,3}\d{6}\D/.test(lines[i])&&!HEAD.test(lines[i])&&/^\D{0,3}\d{1,2}\s*[.,]\s*\d{1,2}\s*[.,]\s*\d{4}/.test(lines[i+1])){lines[i]+=' '+lines[i+1];lines.splice(i+1,1)}
  const out=[];let cur=null;
@@ -182,7 +204,8 @@ function parseOcr(text){let lines=text.split(/\n/).map(l=>l.replace(/[—–]/g,
   let amt=null;for(const l of o.lines){if(/\b(gp|händler|haendler|nr)\b/i.test(l))continue;
    const ln=normAmtLine(l);const ms=[...ln.matchAll(/(\d{1,3}(?:\.\d{3})+|\d+)\s*[,.]\s*(\d{2})\s*(€|EUR|E\b)/gi)];if(ms.length)amt=ms[ms.length-1];
    else if(amt==null){const m2=l.match(/(?:pauschale|betrag)\D*(\d+)\s*[,.]\s*(\d{2})/i);if(m2)amt=m2}}
-  if(amt)o.cents=parseInt(amt[1].replace(/\D/g,''),10)*100+parseInt(amt[2],10);delete o.lines}
+  if(amt)o.cents=parseInt(amt[1].replace(/\D/g,''),10)*100+parseInt(amt[2],10);
+  else{const g=guessAmt(o.lines.filter(l=>!/\b(gp|händler|haendler|nr)\b/i.test(l)));if(Number.isFinite(g)){o.cents=g;o.amtGuess=true}}delete o.lines}
  return out.length?out:parseApp(text)}
 // Bildschirmfotos aus einer Einnahmen-App (Kopf: Kategorie + Mandant, "November 2026", Zeilen: Auftragsnr. + "+20,00 €")
 const MON_RE='januar|februar|m.rz|april|mai|juni|juli|august|september|oktober|november|dezember';
@@ -253,10 +276,10 @@ function vote(passes){passes=passes.filter(Array.isArray);if(!passes.length)retu
   const nr=pick(os.map(x=>x.nr),(a,b)=>0);o.nr=nr.v;if(!nr.sure)warn.push('Auftragsnr. unsicher');
   // App-Bildschirmfoto: "+" wird manchmal als "4" gelesen (+20,00 → 420,00)
   let cs=os.map(x=>x.cents).filter(Number.isFinite);if(o.app){const al=os.filter(x=>Number.isFinite(x.alt4));cs=cs.map(c=>{const a=al.find(x=>x.cents===c);return a&&(cs.includes(a.alt4)||os.length===1)?a.alt4:c})}
-  const am=pick(cs.map(String),(a,b)=>a-b);if(am.v!==undefined){o.cents=+am.v;if(!am.sure||(o.app&&os.some(x=>x.cents===o.cents&&Number.isFinite(x.alt4))))warn.push('Betrag unsicher')}else o.cents=NaN;
+  const am=pick(cs.map(String),(a,b)=>a-b);if(am.v!==undefined){o.cents=+am.v;if(!am.sure||os.some(x=>x.cents===o.cents&&x.amtGuess)||(o.app&&os.some(x=>x.cents===o.cents&&Number.isFinite(x.alt4))))warn.push('Betrag unsicher')}else o.cents=NaN;
   const kt=pick(os.map(x=>x.mandant+'|'+x.kat),(a,b)=>0);[o.mandant,o.kat]=kt.v.split('|');
   const dt=pick(os.map(x=>x.date),(a,b)=>0);o.date=dt.v;if(!dt.sure||os.some(x=>x.dateWarn))warn.push('Datum unsicher');
-  const pp=pick(os.map(x=>x.person||'').filter(Boolean),(a,b)=>0);o.person=pp.v||'';o.ocrWarn=warn;delete o.alt4;delete o.dateWarn;return o})}
+  const pp=pick(os.map(x=>x.person||'').filter(Boolean),(a,b)=>0);o.person=pp.v||'';o.ocrWarn=warn;delete o.alt4;delete o.dateWarn;delete o.amtGuess;return o})}
 function markRows(init){const seen={};reviewRows.forEach(r=>{r.notes=init?[...(r.ocrWarn||[])]:(r.notes||[]).filter(n=>/unsicher/.test(n)&&!r.touched);r.known=!!(state.mandanten[r.mandant]||[]).includes(r.kat);
  if(!r.known)r.notes.push('Kategorie unbekannt');if(state.bookings.some(b=>b.nr===r.nr))r.notes.push('Auftragsnummer schon gebucht');
  if(seen[r.nr])r.notes.push('Doppelt in diesem Import');seen[r.nr]=1;if(!Number.isFinite(r.cents))r.notes.push('Betrag fehlt');if(init&&r.notes.length)r.on=false})}
