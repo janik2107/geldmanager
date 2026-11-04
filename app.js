@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v4', KEY='geldmanager-v1';
+const VERSION='gm-v5', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -98,7 +98,10 @@ async function prep(img,T){const sc=Math.max(.5,Math.min(3,T/img.width));const w
  const d=x.getImageData(0,0,w,h),p=d.data;let sum=0;for(let i=0;i<p.length;i+=4){const g=.299*p[i]+.587*p[i+1]+.114*p[i+2];p[i]=g;sum+=g}
  const dark=sum/(p.length/4)<110,lo=60,hi=235;for(let i=0;i<p.length;i+=4){let g=p[i];if(dark)g=255-g;g=(g-lo)*255/(hi-lo);g=g<0?0:g>255?255:g;p[i]=p[i+1]=p[i+2]=g;p[i+3]=255}
  x.putImageData(d,0,0);return c}
-function matchKat(mid){const n=normKey(mid);let best=null;
+const ALIASES=[['WF (DE)','CMS','Wells Fargo'],['AGCO BL_DE','CMS','DLL / AGCO'],['DLL Blue','CMS','DLL / AGCO']];
+const fuzz=s=>normKey(s).replace(/[il1|]/g,'l').replace(/0/g,'o');
+function matchKat(mid){const n=normKey(mid);const fz=fuzz(mid);
+ for(const[al,m,k]of ALIASES)if(fz.includes(fuzz(al))&&(state.mandanten[m]||[]).includes(k))return{mandant:m,kat:k,known:true};let best=null;
  for(const[m,ks]of Object.entries(state.mandanten))for(const k of ks){const kn=normKey(k);if(kn&&n.includes(kn)){const score=kn.length+(n.includes(normKey(m))?100:0);if(!best||score>best.score)best={m,k,score}}}
  if(best)return{mandant:best.m,kat:best.k,known:true};
  let raw=mid.replace(/^[\s|Il\[\]!:]+|[\s|Il\[\]!:]+$/g,'');let mandant='';
