@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v10', KEY='geldmanager-v1';
+const VERSION='gm-v11', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -161,9 +161,10 @@ function normAmtLine(l){l=l.replace(/\b(?:EUR0?|EURO|EUH|FUR|EUA|ELR|EUP)\b/gi,'
 function fixAmtWord(w){const s=w.symbols||[],t=w.text||'';if(/\d\.\d{3}[,.]\d{2}/.test(t))return null;const m=t.match(/(\d+)[,.](\d{2})(?!\d)/);
  if(!m||s.length!==[...t].length||m[1].length<2)return null;const ci=m.index+m[1].length;if(!/[,.]/.test(s[ci].text))return null;
  const cents=s.slice(ci+1,ci+3);if(cents.length<2)return null;const hh=y=>y.bbox.y1-y.bbox.y0,H=Math.max(...cents.map(hh));if(!(H>0))return null;
+ const cg=Math.max(0,cents[1].bbox.x0-cents[0].bbox.x1);// normaler Ziffernabstand dieser Schrift
  let k=ci-1,keep=0,rightX=s[ci].bbox.x0;
  while(k>=m.index){const y=s[k],gap=rightX-y.bbox.x1;
-  if(Math.abs(hh(y)-H)>.15*H||gap>(k===ci-1?.45:.22)*H||gap<-.15*H)break;
+  if(Math.abs(hh(y)-H)>.15*H||gap>(k===ci-1?Math.max(.45*H,2.5*cg):Math.max(.22*H,1.8*cg))||gap<-.15*H)break;
   if(k>0&&s[k-1].bbox.x1>y.bbox.x0+.2*(y.bbox.x1-y.bbox.x0))break;
   keep++;rightX=y.bbox.x0;k--}
  if(!keep||keep===m[1].length)return null;return t.slice(0,m.index)+' '+t.slice(ci-keep)}
