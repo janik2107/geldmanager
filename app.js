@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v5', KEY='geldmanager-v1';
+const VERSION='gm-v6', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -85,18 +85,37 @@ $('#impFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{cons
  const r=mergeBookings(d.bookings||[]);render();toast(`Import: ${r.added} neu, ${r.skipped} übersprungen`)}catch(err){toast('Datei nicht lesbar')}e.target.value=''};
 /* ---------- Fotos/Screenshots: OCR lokal im Browser ---------- */
 const normKey=s=>String(s).toLowerCase().replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/[^a-z0-9]/g,'');
-let ocrWorker=null;
-function ocrStatus(t,p){$('#ocrStatus').hidden=false;if(t!=null)$('#ocrText').textContent=t;if(p!=null)$('#ocrBar').style.width=Math.round(p*100)+'%'}
+let ocrWorker=null,ocrBusy=false;
+const LOAD_TIMEOUT=150000,MAXPX=5e6,passTimeout=()=>window.GM_PASS_TIMEOUT||90000;
+function ocrStatus(t,p){const s=$('#ocrStatus');s.hidden=false;s.classList.remove('done','err');$('#ocrMsg').hidden=true;$('#ocrBarWrap').hidden=false;if(t!=null)$('#ocrText').textContent=t;if(p!=null)$('#ocrBar').style.width=Math.round(Math.max(0,Math.min(1,p))*100)+'%'}
+// Ergebnis bleibt sichtbar stehen, bis man "OK" tippt (statt kurzem Toast)
+function ocrDone(title,msg,isErr){const s=$('#ocrStatus');s.hidden=false;s.classList.add('done');s.classList.toggle('err',!!isErr);$('#ocrBarWrap').hidden=true;$('#ocrText').textContent=title;
+ const m=$('#ocrMsg');m.hidden=!msg;m.innerHTML=msg||''}
+$('#ocrOk').onclick=()=>{$('#ocrStatus').hidden=true};
+function withTimeout(pr,ms,msg){let t;return Promise.race([pr,new Promise((_,rej)=>t=setTimeout(()=>rej(new Error(msg)),ms))]).finally(()=>clearTimeout(t))}
+async function killOcr(){const w=ocrWorker;ocrWorker=null;if(w)try{(await Promise.race([w,new Promise(r=>setTimeout(r,500))]))?.terminate()}catch(e){}}
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('Texterkennung konnte nicht geladen werden'));document.head.appendChild(s)})}
+let ocrProg=null;
 function getOcr(){if(!ocrWorker){const base=new URL('vendor/',location.href).href;
  ocrWorker=Tesseract.createWorker('deu',1,{workerPath:base+'worker.min.js',corePath:base,langPath:base+'lang',workerBlobURL:false,
-  logger:m=>{if(m.status==='recognizing text')ocrStatus(null,m.progress);else if(/load|init/i.test(m.status||''))ocrStatus('Lade Texterkennung (einmalig) …',m.progress)}})
+  errorHandler:e=>console.warn('OCR',e),
+  logger:m=>{try{if(m.status==='recognizing text'){if(ocrProg)ocrProg(m.progress)}else if(/load|init/i.test(m.status||''))ocrStatus('Lade Texterkennung (beim ersten Mal ca. 9 MB) …',m.progress)}catch(e){}}})
  .then(async w=>{await w.setParameters({tessedit_pageseg_mode:'4',preserve_interword_spaces:'1'});return w});ocrWorker.catch(()=>ocrWorker=null)}return ocrWorker}
-function loadImg(f){return new Promise((res,rej)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);res(im)};im.onerror=()=>rej(new Error('Bild nicht lesbar'));im.src=u})}
-// wie Tourenplaner: skalieren, Graustufen, Dunkelmodus invertieren, Kontrast
-async function prep(img,T){const sc=Math.max(.5,Math.min(3,T/img.width));const w=Math.round(img.width*sc),h=Math.round(img.height*sc);
- const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d',{willReadFrequently:true});x.imageSmoothingQuality='high';x.drawImage(img,0,0,w,h);
- const d=x.getImageData(0,0,w,h),p=d.data;let sum=0;for(let i=0;i<p.length;i+=4){const g=.299*p[i]+.587*p[i+1]+.114*p[i+2];p[i]=g;sum+=g}
- const dark=sum/(p.length/4)<110,lo=60,hi=235;for(let i=0;i<p.length;i+=4){let g=p[i];if(dark)g=255-g;g=(g-lo)*255/(hi-lo);g=g<0?0:g>255?255:g;p[i]=p[i+1]=p[i+2]=g;p[i+3]=255}
+function loadImg(f){return new Promise((res,rej)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);res(im)};im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('Bild nicht lesbar'))};im.src=u})}
+// wie Tourenplaner: skalieren (max. 5 MP, sonst stürzt die Erkennung auf dem iPhone ab), Graustufen, Dunkelmodus invertieren, Kontrast
+async function prep(img,T){const W=img.naturalWidth||img.width,H=img.naturalHeight||img.height;if(!W||!H)throw new Error('Bild nicht lesbar');
+ const sc=Math.max(.25,Math.min(3,T/W,Math.sqrt(MAXPX/(W*H))));const w=Math.round(W*sc),h=Math.round(H*sc);
+ const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d',{willReadFrequently:true});if(!x)throw new Error('Bild zu groß');x.imageSmoothingQuality='high';x.drawImage(img,0,0,w,h);
+ const d=x.getImageData(0,0,w,h),p=d.data;let sum=0,darkPx=0;for(let i=0;i<p.length;i+=4){const g=.299*p[i]+.587*p[i+1]+.114*p[i+2];p[i]=g;sum+=g;if(g<90)darkPx++}
+ const n=p.length/4,dark=sum/n<110||darkPx/n>.55,lo=dark?25:60,hi=dark?215:235;
+ // Dunkles Bildschirmfoto: helle Flächen (Vorschaubilder) ausblenden, die stören sonst die Erkennung
+ if(dark){const L=Math.max(16,Math.round(w*.05)),m=new Uint8Array(n);
+  for(let y=0;y<h;y++){let r=0;for(let x0=0;x0<=w;x0++){const on=x0<w&&p[(y*w+x0)*4]>200;if(on)r++;else{if(r>=L)for(let k=x0-r;k<x0;k++)m[y*w+k]=1;r=0}}}
+  for(let x0=0;x0<w;x0++){let r=0;for(let y=0;y<=h;y++){const on=y<h&&p[(y*w+x0)*4]>200;if(on)r++;else{if(r>=L)for(let k=y-r;k<y;k++)m[k*w+x0]=1;r=0}}}
+  // Rest im Inneren der Flächen (kleine Schrift im Vorschaubild) mit wegnehmen
+  const B=new Uint8Array(n);for(let y=0;y<h;y++){let last=-1e9;for(let x0=0;x0<w;x0++){if(m[y*w+x0])last=x0;else if(x0-last<L&&last>=0){let nx=-1;for(let k=x0+1;k<Math.min(w,x0+L);k++)if(m[y*w+k]){nx=k;break}if(nx>0)B[y*w+x0]=1}}}
+  for(let i=0;i<n;i++)if(m[i]||B[i])p[i*4]=0}
+for(let i=0;i<p.length;i+=4){let g=p[i];if(dark)g=255-g;g=(g-lo)*255/(hi-lo);g=g<0?0:g>255?255:g;p[i]=p[i+1]=p[i+2]=g;p[i+3]=255}
  x.putImageData(d,0,0);return c}
 const ALIASES=[['WF (DE)','CMS','Wells Fargo'],['AGCO BL_DE','CMS','DLL / AGCO'],['DLL Blue','CMS','DLL / AGCO']];
 const fuzz=s=>normKey(s).replace(/[il1|]/g,'l').replace(/0/g,'o');
@@ -118,25 +137,80 @@ function parseOcr(text){let lines=text.split(/\n/).map(l=>l.replace(/[—–]/g,
    const ms=[...l.matchAll(/(\d{1,3}(?:\.\d{3})+|\d+)\s*[,.]\s*(\d{2})\s*(€|EUR|E\b)/gi)];if(ms.length)amt=ms[ms.length-1];
    else if(amt==null){const m2=l.match(/(?:pauschale|betrag)\D*(\d+)\s*[,.]\s*(\d{2})/i);if(m2)amt=m2}}
   if(amt)o.cents=parseInt(amt[1].replace(/\D/g,''),10)*100+parseInt(amt[2],10);delete o.lines}
+ return out.length?out:parseApp(text)}
+// Bildschirmfotos aus einer Einnahmen-App (Kopf: Kategorie + Mandant, "November 2026", Zeilen: Auftragsnr. + "+20,00 €")
+const MON_RE='januar|februar|m.rz|april|mai|juni|juli|august|september|oktober|november|dezember';
+const monIdx=s=>{s=s.toLowerCase();return s.startsWith('m')&&s.length===4?2:MONTHS.findIndex(m=>m.toLowerCase()===s)};
+const isoD=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function parseApp(text,today){today=today||window.GM_TODAY&&new Date(window.GM_TODAY)||new Date();
+ const lines=text.split(/\n/).map(l=>l.replace(/[—–]/g,'-').replace(/\s+/g,' ').trim()).filter(Boolean);const lk=lines.map(l=>l.toLowerCase());
+ if(!lk.some(l=>/einnahmen|\bbuchung(en)?\b|summe f|ausgaben/.test(l))||!lines.some(l=>/(?:^|\D)\d{6}(?!\d)/.test(l)))return[];
+ const monRe=new RegExp('('+MON_RE+')\\s+(\\d{4})');let hy=null,hm=null,hIdx=-1;
+ for(let i=0;i<lk.length;i++){const m=lk[i].match(monRe);if(m&&!new RegExp('\\d{1,2}\\.\\s*(?:'+MON_RE+')').test(lk[i])){hm=monIdx(m[1]);hy=+m[2];hIdx=i;break}}
+ const hc=[hIdx,lk.findIndex(l=>/einnahmen|summe f/.test(l))].filter(i=>i>=0),head=lines.slice(0,hc.length?Math.min(...hc):6);
+ let best=null;for(const l of head){const n=normKey(l);if(!n)continue;
+  for(const[al,m,k]of ALIASES)if(fuzz(l).includes(fuzz(al))&&(state.mandanten[m]||[]).includes(k)&&(!best||best.s<99))best={m,k,s:99};
+  for(const[m,ks]of Object.entries(state.mandanten))for(const k of ks){const kn=normKey(k);if(kn&&n.endsWith(kn)&&n.length-kn.length<=2){const s=kn.length;if(!best||s>best.s)best={m,k,s}}}}
+ let mandant=best?best.m:'',kat=best?best.k:'';
+ for(const l of head){const n=normKey(l);const m=Object.keys(state.mandanten).find(x=>normKey(x)===n);if(m){if(!best)mandant=m;else if((state.mandanten[m]||[]).includes(kat))mandant=m;break}}
+ const wd='(?:montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)';const dayRe=new RegExp('^\\W{0,3}(?:'+wd+'\\W*)?(\\d{1,2})\\s*\\.\\s*('+MON_RE+')(?:\\s+(\\d{4}))?\\W*$');
+ const out=[];let cur=null,date=null,dWarn=false;
+ const amtRe=/(\+|＋)?\s?(\d{1,3}(?:\.\d{3})+|\d+)\s*[,.]\s*(\d{2})\s*(?:€|EUR|E\b)/i;
+ const setAmt=(o,s)=>{const m=s.match(amtRe);if(!m)return;const ds=m[2].replace(/\D/g,'');o.cents=parseInt(ds,10)*100+parseInt(m[3],10);
+  if(!m[1]&&ds.length>1&&ds[0]==='4')o.alt4=parseInt(ds.slice(1),10)*100+parseInt(m[3],10)};
+ for(let i=Math.max(0,hIdx+1);i<lines.length;i++){const l=lines[i],k=lk[i];
+  if(/^\W{0,3}heute\W{0,3}$/.test(k)){date=isoD(today);dWarn=false;continue}
+  if(/^\W{0,3}gestern\W{0,3}$/.test(k)){const d=new Date(today);d.setDate(d.getDate()-1);date=isoD(d);dWarn=false;continue}
+  const dm=k.match(dayRe);if(dm){const y=dm[3]?+dm[3]:(hy||today.getFullYear());date=`${y}-${String(monIdx(dm[2])+1).padStart(2,'0')}-${dm[1].padStart(2,'0')}`;dWarn=false;continue}
+  const nm=l.match(/(?:^|[^\d,.])(\d{6})(?![\d,.])/);
+  if(nm){let d=date,w=dWarn;if(!d){d=hy!=null?`${hy}-${String(hm+1).padStart(2,'0')}-01`:isoD(today);w=true}
+   else if(hy!=null&&d.slice(0,7)!==`${hy}-${String(hm+1).padStart(2,'0')}`)w=true;
+   cur={nr:nm[1],date:d,mandant,kat,known:!!best,kunde:'Aus App-Bildschirmfoto',cents:NaN,person:'',app:true,dateWarn:w};out.push(cur);setAmt(cur,l.slice(nm.index+nm[0].length));continue}
+  if(cur){if(!Number.isFinite(cur.cents))setAmt(cur,l);if(!cur.person){const p=state.persons.find(p=>new RegExp('(^|\\W)'+p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\W|$)','i').test(l));if(p)cur.person=p}}}
  return out}
 let reviewRows=[];
-async function handlePhotos(files){files=[...files];if(!files.length)return;$('#photoBtn').disabled=true;
- try{if(!window.Tesseract)throw new Error('Texterkennung nicht geladen');const w=await getOcr();const found=[];
-  const SIZES=window.GM_SIZES||[1000,1400,2400];
-  for(let i=0;i<files.length;i++){const img=await loadImg(files[i]);const passes=[];
-   for(let j=0;j<SIZES.length;j++){ocrStatus(`Lese Bild ${i+1}/${files.length} (Durchgang ${j+1}/${SIZES.length}) …`,0);const{data}=await w.recognize(await prep(img,SIZES[j]));passes.push(parseOcr(data.text))}
-   found.push(...vote(passes))}
-  $('#ocrStatus').hidden=true;if(!found.length){toast('Keine Aufträge erkannt');return}
-  reviewRows=found.map(o=>({...o,person:'Janik',on:true}));markRows(true);renderReview()}
- catch(e){$('#ocrStatus').hidden=true;toast('Fehler: '+e.message)}finally{$('#photoBtn').disabled=false;$('#photoFile').value=''}}
+const sig=p=>JSON.stringify(p.map(o=>[o.nr,o.cents,o.date,o.mandant,o.kat]));
+async function handlePhotos(files){files=[...(files||[])];if(!files.length||ocrBusy)return;ocrBusy=true;$('#photoBtn').disabled=true;$('#review').hidden=true;
+ const found=[],errors=[];let empty=0;
+ try{ocrStatus('Starte Texterkennung …',0);
+  if(!window.Tesseract)await withTimeout(loadScript('vendor/tesseract.min.js'),30000,'Texterkennung lädt nicht');
+  if(!window.Tesseract)throw new Error('Texterkennung nicht geladen');
+  const SIZES=window.GM_SIZES||[1000,1400,2400],tot=files.length*SIZES.length;
+  for(let i=0;i<files.length;i++){const passes=[];
+   try{const img=await loadImg(files[i]);
+    for(let j=0;j<SIZES.length;j++){
+     // 2 gleiche Ergebnisse = Mehrheit steht schon fest, 3. Durchgang sparen
+     if(j===2&&passes[0].length&&sig(passes[0])===sig(passes[1]))break;
+     const w=await withTimeout(getOcr(),LOAD_TIMEOUT,'Texterkennung lädt zu lange (Internet?)');
+     const label=`Lese Bild ${i+1}/${files.length} · Durchgang ${j+1}/${SIZES.length} …`;const step=i*SIZES.length+j;ocrStatus(label,step/tot);
+     ocrProg=p=>ocrStatus(null,(step+p)/tot);
+     const canvas=await prep(img,SIZES[j]);
+     let data;try{({data}=await withTimeout(w.recognize(canvas),passTimeout(),'Zeitüberschreitung beim Lesen'))}catch(e){await killOcr();throw e}
+     passes.push(parseOcr(data.text||''))}
+    const v=vote(passes);if(!v.length)empty++;found.push(...v)}
+   catch(e){console.warn(e);errors.push(`Bild ${i+1}: ${e.message||e}`)}}
+ }catch(e){console.warn(e);errors.push(e.message||String(e))}
+ finally{ocrProg=null;ocrBusy=false;$('#photoBtn').disabled=false;$('#photoFile').value=''}
+ try{const tips='<p><b>Tipps:</b></p><p>• Auftrag gerade und scharf fotografieren, ganzes Blatt im Bild, gutes Licht</p><p>• Auftragsnummer (6 Ziffern) und Betrag müssen lesbar sein</p><p>• Bildschirmfotos aus der Einnahmen-App gehen auch</p>';
+  const errHtml=errors.length?`<p>${errors.map(esc).join('<br>')}</p><p>Bitte nochmal versuchen. Hilft das nicht: App ganz schließen und neu öffnen.</p>`:'';
+  if(!found.length){if(errors.length&&!empty)ocrDone('Fehler beim Lesen',errHtml,true);else ocrDone('Keine Buchung erkannt',errHtml+tips,!!errors.length);return}
+  reviewRows=found.map(o=>({...o,person:o.person||'Janik',on:true}));markRows(true);renderReview();
+  const dups=reviewRows.filter(r=>state.bookings.some(b=>b.nr===r.nr)).length,n=reviewRows.length;
+  ocrDone(`${n} ${n===1?'Auftrag':'Aufträge'} erkannt`+(dups===n?' – alle schon gebucht':dups?`, davon ${dups} schon gebucht`:''),errHtml+(dups===n?'<p>Es gibt nichts Neues zu buchen. Die Aufträge stehen unten zur Kontrolle.</p>':'<p>Bitte unten prüfen und auf „Buchen“ tippen.</p>'),!!errors.length);
+  $('#review').scrollIntoView({behavior:'smooth',block:'start'})}
+ catch(e){console.warn(e);ocrDone('Fehler',esc(e.message||String(e)),true)}}
+window.addEventListener('unhandledrejection',e=>{if(ocrBusy)console.warn('OCR',e.reason)});
 // Mehrere OCR-Durchgänge, pro Feld Mehrheitsentscheid (gegen OCR-Rauschen)
-function vote(passes){const cnt={};passes.forEach(p=>cnt[p.length]=(cnt[p.length]||0)+1);const n=+Object.entries(cnt).sort((a,b)=>b[1]-a[1]||b[0]-a[0])[0][0];
+function vote(passes){passes=passes.filter(Array.isArray);if(!passes.length)return[];const cnt={};passes.forEach(p=>cnt[p.length]=(cnt[p.length]||0)+1);const n=+Object.entries(cnt).sort((a,b)=>b[1]-a[1]||b[0]-a[0])[0][0];
  const use=passes.filter(p=>p.length===n);const pick=(vals,tie)=>{const c={};vals.forEach(v=>c[v]=(c[v]||0)+1);const best=Object.entries(c).sort((a,b)=>b[1]-a[1]||tie(a[0],b[0]))[0];if(!best)return{v:undefined,sure:false};return{v:best[0],sure:best[1]>vals.length/2}};
  return Array.from({length:n},(_,i)=>{const os=use.map(p=>p[i]);const o={...os[0]};const warn=[];
   const nr=pick(os.map(x=>x.nr),(a,b)=>0);o.nr=nr.v;if(!nr.sure)warn.push('Auftragsnr. unsicher');
-  const am=pick(os.map(x=>x.cents).filter(Number.isFinite).map(String),(a,b)=>a-b);if(am.v!==undefined){o.cents=+am.v;if(!am.sure)warn.push('Betrag unsicher')}
+  // App-Bildschirmfoto: "+" wird manchmal als "4" gelesen (+20,00 → 420,00)
+  let cs=os.map(x=>x.cents).filter(Number.isFinite);if(o.app){const al=os.filter(x=>Number.isFinite(x.alt4));cs=cs.map(c=>{const a=al.find(x=>x.cents===c);return a&&(cs.includes(a.alt4)||os.length===1)?a.alt4:c})}
+  const am=pick(cs.map(String),(a,b)=>a-b);if(am.v!==undefined){o.cents=+am.v;if(!am.sure||(o.app&&os.some(x=>x.cents===o.cents&&Number.isFinite(x.alt4))))warn.push('Betrag unsicher')}else o.cents=NaN;
   const kt=pick(os.map(x=>x.mandant+'|'+x.kat),(a,b)=>0);[o.mandant,o.kat]=kt.v.split('|');
-  const dt=pick(os.map(x=>x.date),(a,b)=>0);o.date=dt.v;if(!dt.sure)warn.push('Datum unsicher');o.ocrWarn=warn;return o})}
+  const dt=pick(os.map(x=>x.date),(a,b)=>0);o.date=dt.v;if(!dt.sure||os.some(x=>x.dateWarn))warn.push('Datum unsicher');
+  const pp=pick(os.map(x=>x.person||'').filter(Boolean),(a,b)=>0);o.person=pp.v||'';o.ocrWarn=warn;delete o.alt4;delete o.dateWarn;return o})}
 function markRows(init){const seen={};reviewRows.forEach(r=>{r.notes=init?[...(r.ocrWarn||[])]:(r.notes||[]).filter(n=>/unsicher/.test(n)&&!r.touched);r.known=!!(state.mandanten[r.mandant]||[]).includes(r.kat);
  if(!r.known)r.notes.push('Kategorie unbekannt');if(state.bookings.some(b=>b.nr===r.nr))r.notes.push('Auftragsnummer schon gebucht');
  if(seen[r.nr])r.notes.push('Doppelt in diesem Import');seen[r.nr]=1;if(!Number.isFinite(r.cents))r.notes.push('Betrag fehlt');if(init&&r.notes.length)r.on=false})}
@@ -163,7 +237,7 @@ function renderReview(){const el=$('#review');el.hidden=false;const opt=(a,v)=>a
   reviewRows=reviewRows.filter(r=>!r.on);if(!reviewRows.length)el.hidden=true;else{markRows(false);renderReview()}
   if(sel[0]){const[y,m]=sel[0].date.split('-');cur={y:+y,m:+m-1}}render();toast(`${sel.length} gebucht`)}}
 $('#photoBtn').onclick=()=>$('#photoFile').click();$('#photoFile').onchange=e=>handlePhotos(e.target.files);
-window.GM_parseOcr=parseOcr;
+window.GM_parseOcr=parseOcr;window.GM_vote=vote;
 
 fromFragment();render();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');

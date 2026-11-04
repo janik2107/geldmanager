@@ -11,7 +11,7 @@
  <div class="hero"><span>Monatssumme</span><b id="total"></b><small id="count"></small></div>
  <div class="row"><button id="addBtn" class="primary">＋ Buchung</button><button id="photoBtn" class="tinted">📷 Aus Fotos</button></div>
  <input type="file" id="photoFile" accept="image/*" multiple hidden>
- <div id="ocrStatus" class="group pad" hidden><div id="ocrText">…</div><div class="bar"><i id="ocrBar"></i></div></div>
+ <div id="ocrStatus" class="group pad" hidden role="status" aria-live="polite"><div class="oh"><div id="ocrText">…</div><button type="button" id="ocrOk" class="link strong">OK</button></div><div id="ocrBarWrap" class="bar"><i id="ocrBar"></i></div><div id="ocrMsg" hidden></div></div>
  <div id="review" hidden></div>
  <form id="form" class="sheet" hidden>
   <div class="sheethead"><button type="button" id="cancel" class="link">Abbrechen</button><b id="formTitle">Neue Buchung</b><button type="submit" id="save" class="link strong">Sichern</button></div>
