@@ -38,6 +38,31 @@
  <div class="hero"><span>Einnahmen im Monat</span><b id="katTotal" class="green"></b><small id="katCount"></small></div>
  <div id="katList"></div>
 </section>
+<section id="tab-clock" class="tab" hidden>
+ <div class="top"><h1>Stempeluhr</h1><div class="month"><button class="mprev" aria-label="Vormonat">‹</button><span class="mlabel"></span><button class="mnext" aria-label="Nächster Monat">›</button></div></div>
+ <div id="ckPeople" class="segs"></div>
+ <div id="ckCard" class="hero ckcard"><span id="ckName"></span><div id="ckState" class="ckstate"></div><b id="ckTimer" class="cktimer">0:00:00</b><small id="ckToday"></small>
+  <button id="ckBtn" class="big in">Einstempeln</button><button id="ckPause" class="tinted" hidden>Pause starten</button></div>
+ <div class="row"><button id="ckAdd" class="tinted">＋ Zeit nachtragen</button></div>
+ <form id="ckForm" class="sheet" hidden>
+  <div class="sheethead"><button type="button" id="ckCancel" class="link">Abbrechen</button><b id="ckFormTitle">Zeit nachtragen</b><button type="submit" class="link strong">Sichern</button></div>
+  <div class="group">
+   <label class="cell">Person<select id="ck-person"></select></label>
+   <label class="cell">Datum<input id="ck-date" type="date" required></label>
+   <label class="cell">Beginn<input id="ck-start" type="time" required></label>
+   <label class="cell">Ende<input id="ck-end" type="time" required></label>
+   <label class="cell">Pause (Min.)<input id="ck-pause" inputmode="numeric" placeholder="0"></label>
+   <label class="cell">Notiz<input id="ck-note" placeholder="optional"></label>
+  </div><p id="ckPrev" class="foot"></p>
+  <div class="group"><button type="button" id="ckDel" class="cellbtn" style="color:var(--red)" hidden>Eintrag löschen</button></div>
+ </form>
+ <p class="gh">Summen (Stunden, ohne Pausen)</p><div id="ckSums" class="group cksums"></div>
+ <p class="gh" id="ckListHead">Zeiten</p><p class="foot" id="ckMonthTot" style="text-align:left;margin-top:-2px"></p>
+ <div id="ckList"></div>
+ <div class="row"><button id="ckCsv" class="tinted">CSV (Monat)</button><button id="ckShare" class="tinted">Teilen / Kopieren</button></div>
+ <p class="gh">Personen Stempeluhr</p><div class="group pad"><div id="ckPersons" class="chips"></div>
+ <div class="row"><input id="ckNewP" placeholder="Neue Person"><button id="ckAddP" class="tinted">Hinzufügen</button></div></div>
+</section>
 <section id="tab-set" class="tab" hidden>
  <div class="top"><h1>Einstellungen</h1></div>
  <p class="gh">Personen</p><div class="group pad"><div id="persons" class="chips"></div>
@@ -51,8 +76,9 @@
 </section>
 </main>
 <nav class="tabbar">
- <button data-tab="list" class="on"><span>☰</span>Buchungen</button><button data-tab="sum"><span>◔</span>Übersicht</button><button data-tab="set"><span>⚙︎</span>Einstellungen</button>
+ <button data-tab="list" class="on"><span>☰</span>Buchungen</button><button data-tab="sum"><span>◔</span>Übersicht</button><button data-tab="clock"><span>⏱︎</span>Stempeluhr</button><button data-tab="set"><span>⚙︎</span>Einstellungen</button>
 </nav>
 <div id="toast" hidden></div>
 <script src="vendor/tesseract.min.js" defer></script>
-<script src="app.js" defer></script></body></html>
+<script src="app.js" defer></script>
+<script src="clock.js" defer></script></body></html>

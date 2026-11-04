@@ -64,3 +64,17 @@ li .act{display:flex;gap:12px;justify-content:flex-end;margin-top:4px}li .act bu
 @media (prefers-color-scheme:dark){.kic{color:hsl(var(--h) 85% 68%);background:hsl(var(--h) 70% 50% / .22)}}
 .ksub{color:var(--sec);font-size:15px;margin-top:2px}.kmonth{width:max-content;margin:0 auto 12px}
 #review .day{margin-bottom:6px}#review .dh{background:color-mix(in srgb,var(--bg) 88%,transparent)}
+
+/* v8: Stempeluhr */
+.segs{display:flex;gap:2px;background:var(--fill);border-radius:10px;padding:2px;margin:0 0 12px}
+.seg{flex:1;background:none;border-radius:8px;padding:7px 8px;font-size:15px;font-weight:600;color:var(--text)}.seg.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-left:4px;vertical-align:middle}.dot.pz{background:var(--warn)}
+.ckcard{align-items:center;text-align:center;gap:2px}.ckcard>span{font-size:13px}.ckstate{color:var(--sec);font-size:15px}
+.cktimer{font-size:52px!important;font-weight:600!important;letter-spacing:-1px;margin:6px 0 2px!important;font-variant-numeric:tabular-nums}
+.ckcard.in .cktimer{color:var(--accent2)}.ckcard.pz .cktimer{color:var(--warn)}.ckcard.in .ckstate{color:var(--accent2)}.ckcard.pz .ckstate{color:var(--warn)}
+.big{width:100%;margin-top:14px;padding:16px;font-size:19px;font-weight:700;border-radius:14px;color:#fff}.big.in{background:var(--accent)}.big.out{background:var(--red)}
+.ckcard #ckPause{width:100%;margin-top:8px}
+.cksums .ckrow{display:grid;grid-template-columns:1fr 84px 84px;padding:11px 16px;position:relative;align-items:center}.cksums .ckrow+.ckrow::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--sep)}
+.cksums .ckrow b,.cksums .ckrow span+span{text-align:right;font-variant-numeric:tabular-nums}.cksums .ckrow b{font-weight:600}.cksums .ckhd{font-size:13px;color:var(--sec);padding:8px 16px}
+li.ck{cursor:pointer}li.ck .b{color:var(--text)}li.run .b{color:var(--accent2)}.chevs{color:var(--sec);font-size:18px;line-height:1;opacity:.6}
+.tabbar button{font-size:10.5px}

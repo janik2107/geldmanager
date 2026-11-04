@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v7', KEY='geldmanager-v1';
+const VERSION='gm-v8', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -69,7 +69,7 @@ function render(){document.querySelectorAll('.mlabel').forEach(e=>e.textContent=
  $('#persons').innerHTML=state.persons.map(p=>`<span class="chip">${esc(p)}<button data-delp="${esc(p)}" aria-label="entfernen">✕</button></span>`).join('');
  $('#mandanten').innerHTML=Object.entries(state.mandanten).map(([m,ks])=>`<div class="group m"><b>${esc(m)}</b><div class="chips">${ks.map(k=>`<span class="chip">${esc(k)}<button data-delk="${esc(m)}|${esc(k)}">✕</button></span>`).join('')}</div>
  <div class="row"><input placeholder="Neue Kategorie" data-newk="${esc(m)}"><button class="tinted" data-addk="${esc(m)}" style="flex:0 0 52px">＋</button></div></div>`).join('');
- $('#ver').textContent=VERSION}
+ $('#ver').textContent=VERSION;if(window.renderClock)renderClock()}
 function fillSelect(sel,opts,val){sel.innerHTML=opts.map(o=>`<option${o===val?' selected':''}>${esc(o)}</option>`).join('')}
 function fillKat(val){fillSelect($('#f-kat'),state.mandanten[$('#f-mandant').value]||[],val)}
 function openForm(b){editId=b?b.id:null;$('#formTitle').textContent=b?'Buchung bearbeiten':'Neue Buchung';
@@ -88,7 +88,7 @@ $('#form').addEventListener('submit',e=>{e.preventDefault();const b={id:editId||
  save();const[y,m]=b.date.split('-');cur={y:+y,m:+m-1};toast(editId?'Geändert':'Gespeichert');closeForm();render()});
 $('#addBtn').onclick=()=>openForm();$('#cancel').onclick=closeForm;
 document.querySelectorAll('.mprev').forEach(b=>b.onclick=()=>{cur.m--;if(cur.m<0){cur.m=11;cur.y--}render()});document.querySelectorAll('.mnext').forEach(b=>b.onclick=()=>{cur.m++;if(cur.m>11){cur.m=0;cur.y++}render()});
-document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('on',x===b));katView=null;$('#tab-kat').hidden=true;['list','sum','set'].forEach(t=>$('#tab-'+t).hidden=t!==b.dataset.tab);scrollTo(0,0)});
+document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('on',x===b));katView=null;$('#tab-kat').hidden=true;['list','sum','clock','set'].forEach(t=>$('#tab-'+t).hidden=t!==b.dataset.tab);scrollTo(0,0)});
 document.addEventListener('click',e=>{const kr=e.target.closest&&e.target.closest('[data-kat]');if(kr){const[m,...k]=kr.dataset.kat.split('|');openKat(m,k.join('|'));return}
  const t=e.target,d=t.dataset;
  if(d.edit){if($('#tab-list').hidden)document.querySelector('.tabbar [data-tab=list]').click();openForm(state.bookings.find(b=>b.id===d.edit));$('#form').scrollIntoView({block:'start'})}
@@ -108,7 +108,7 @@ $('#impBtn').onclick=()=>$('#impFile').click();
 $('#impFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());
  if(d.persons)d.persons.forEach(p=>state.persons.includes(p)||state.persons.push(p));
  if(d.mandanten)for(const[m,ks]of Object.entries(d.mandanten)){state.mandanten[m]=state.mandanten[m]||[];ks.forEach(k=>state.mandanten[m].includes(k)||state.mandanten[m].push(k))}
- const r=mergeBookings(d.bookings||[]);render();toast(`Import: ${r.added} neu, ${r.skipped} übersprungen`)}catch(err){toast('Datei nicht lesbar')}e.target.value=''};
+ const r=mergeBookings(d.bookings||[]);const z=d.clock&&window.mergeClock?mergeClock(d.clock):0;render();toast(`Import: ${r.added} neu, ${r.skipped} übersprungen${z?`, ${z} Zeiten`:''}`)}catch(err){toast('Datei nicht lesbar')}e.target.value=''};
 /* ---------- Fotos/Screenshots: OCR lokal im Browser ---------- */
 const normKey=s=>String(s).toLowerCase().replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/[^a-z0-9]/g,'');
 let ocrWorker=null,ocrBusy=false;
