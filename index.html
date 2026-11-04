@@ -1,38 +1,51 @@
 <!doctype html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Geldmanager"><meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="styles.css"><title>Geldmanager</title></head><body>
-<header><h1>💶 Geldmanager</h1><div class="month"><button id="prev" aria-label="Vormonat">‹</button><span id="mlabel"></span><button id="next" aria-label="Nächster Monat">›</button></div></header>
-<nav><button data-tab="list" class="on">Buchungen</button><button data-tab="sum">Übersicht</button><button data-tab="set">Einstellungen</button></nav>
 <main>
-<section id="tab-list">
- <div class="total">Monatssumme <b id="total"></b></div>
- <button id="addBtn" class="primary">+ Neue Buchung</button>
- <form id="form" hidden>
-  <h2 id="formTitle">Neue Buchung</h2>
-  <label>Auftragsnummer<input id="f-nr" inputmode="numeric" required></label>
+<section id="tab-list" class="tab">
+ <div class="top"><h1>Buchungen</h1><div class="month"><button class="mprev" aria-label="Vormonat">‹</button><span class="mlabel"></span><button class="mnext" aria-label="Nächster Monat">›</button></div></div>
+ <div class="hero"><span>Monatssumme</span><b id="total"></b><small id="count"></small></div>
+ <div class="row"><button id="addBtn" class="primary">＋ Buchung</button><button id="photoBtn" class="tinted">📷 Aus Fotos</button></div>
+ <input type="file" id="photoFile" accept="image/*" multiple hidden>
+ <div id="ocrStatus" class="group pad" hidden><div id="ocrText">…</div><div class="bar"><i id="ocrBar"></i></div></div>
+ <div id="review" hidden></div>
+ <form id="form" class="sheet" hidden>
+  <div class="sheethead"><button type="button" id="cancel" class="link">Abbrechen</button><b id="formTitle">Neue Buchung</b><button type="submit" id="save" class="link strong">Sichern</button></div>
+  <div class="group">
+   <label class="cell">Auftrag<input id="f-nr" inputmode="numeric" required placeholder="Auftragsnummer"></label>
+   <label class="cell">Datum<input id="f-date" type="date" required></label>
+   <label class="cell">Mandant<select id="f-mandant"></select></label>
+   <label class="cell">Kategorie<select id="f-kat"></select></label>
+   <label class="cell">Person<select id="f-person"></select></label>
+   <label class="cell">Betrag €<input id="f-betrag" inputmode="decimal" placeholder="0,00" required></label>
+  </div>
   <div id="dupWarn" class="warn" hidden></div>
-  <label>Datum<input id="f-date" type="date" required></label>
-  <label>Mandant<select id="f-mandant"></select></label>
-  <label>Kategorie<select id="f-kat"></select></label>
-  <label>Person<select id="f-person"></select></label>
-  <label>Betrag (€)<input id="f-betrag" inputmode="decimal" placeholder="0,00" required></label>
-  <div class="row"><button type="submit" class="primary" id="save">Speichern</button><button type="button" id="cancel">Abbrechen</button></div>
  </form>
- <ul id="list"></ul>
+ <ul id="list" class="group"></ul>
 </section>
-<section id="tab-sum" hidden><div id="sums"></div></section>
-<section id="tab-set" hidden>
- <h2>Personen</h2><div id="persons" class="chips"></div>
- <div class="row"><input id="newPerson" placeholder="Neue Person"><button id="addPerson">Hinzufügen</button></div>
- <h2>Mandanten &amp; Kategorien</h2><div id="mandanten"></div>
- <div class="row"><input id="newMandant" placeholder="Neuer Mandant"><button id="addMandant">Hinzufügen</button></div>
- <h2>Backup</h2><p class="hint">Alle Daten liegen nur auf diesem Handy. Mach ab und zu ein Backup.</p>
- <div class="row wrap"><button id="expJson">Export JSON</button><button id="expCsv">Export CSV</button><button id="impBtn">Import JSON</button></div>
+<section id="tab-sum" class="tab" hidden>
+ <div class="top"><h1>Übersicht</h1><div class="month"><button class="mprev">‹</button><span class="mlabel"></span><button class="mnext">›</button></div></div>
+ <div id="sums"></div>
+</section>
+<section id="tab-set" class="tab" hidden>
+ <div class="top"><h1>Einstellungen</h1></div>
+ <p class="gh">Personen</p><div class="group pad"><div id="persons" class="chips"></div>
+ <div class="row"><input id="newPerson" placeholder="Neue Person"><button id="addPerson" class="tinted">Hinzufügen</button></div></div>
+ <p class="gh">Mandanten &amp; Kategorien</p><div id="mandanten"></div>
+ <div class="group pad"><div class="row"><input id="newMandant" placeholder="Neuer Mandant"><button id="addMandant" class="tinted">Hinzufügen</button></div></div>
+ <p class="gh">Backup</p><div class="group">
+  <button class="cellbtn" id="expJson">Export JSON</button><button class="cellbtn" id="expCsv">Export CSV</button><button class="cellbtn" id="impBtn">Import JSON</button></div>
+ <p class="foot">Alle Daten liegen nur auf diesem Gerät. Fotos werden nur auf dem Gerät gelesen.<br>Version <span id="ver"></span></p>
  <input type="file" id="impFile" accept="application/json,.json" hidden>
- <p class="hint">Version <span id="ver"></span></p>
 </section>
-</main><div id="toast" hidden></div>
-<script src="app.js"></script></body></html>
+</main>
+<nav class="tabbar">
+ <button data-tab="list" class="on"><span>☰</span>Buchungen</button><button data-tab="sum"><span>◔</span>Übersicht</button><button data-tab="set"><span>⚙︎</span>Einstellungen</button>
+</nav>
+<div id="toast" hidden></div>
+<script src="vendor/tesseract.min.js" defer></script>
+<script src="app.js" defer></script></body></html>
