@@ -78,3 +78,8 @@ li .act{display:flex;gap:12px;justify-content:flex-end;margin-top:4px}li .act bu
 .cksums .ckrow b,.cksums .ckrow span+span{text-align:right;font-variant-numeric:tabular-nums}.cksums .ckrow b{font-weight:600}.cksums .ckhd{font-size:13px;color:var(--sec);padding:8px 16px}
 li.ck{cursor:pointer}li.ck .b{color:var(--text)}li.run .b{color:var(--accent2)}.chevs{color:var(--sec);font-size:18px;line-height:1;opacity:.6}
 .tabbar button{font-size:10.5px}
+
+/* gm-v12 PLZ-Gebiete */
+.plzseg{display:flex;background:var(--fill,rgba(118,118,128,.12));border-radius:9px;padding:2px;margin:0 0 8px}.plzseg button{flex:1;padding:7px 6px;border-radius:7px;font-size:13px;font-weight:500;background:none}.plzseg button.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.kcard.plz .av{font-size:14px;font-weight:700}.kcard.plz .av.none{background:var(--sep);color:var(--sec)}
+.kcard.plz .kn{position:relative}.kcard.plz .bar{display:block;height:4px;border-radius:2px;margin-top:5px;background:hsl(var(--h,210) 70% 55%);opacity:.8}

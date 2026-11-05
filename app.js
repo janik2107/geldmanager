@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v11', KEY='geldmanager-v1';
+const VERSION='gm-v12', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -17,7 +17,8 @@ function save(){localStorage.setItem(KEY,JSON.stringify(state))}
 const now=new Date();let cur={y:now.getFullYear(),m:now.getMonth()};let editId=null;
 function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2500)}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-function norm(b){return{id:b.id||uid(),nr:String(b.nr).trim(),date:b.date,mandant:b.mandant,kat:b.kat,person:b.person,cents:Number.isInteger(b.cents)?b.cents:parseEur(b.betrag)}}
+function norm(b){return{id:b.id||uid(),nr:String(b.nr).trim(),date:b.date,mandant:b.mandant,kat:b.kat,person:b.person,cents:Number.isInteger(b.cents)?b.cents:parseEur(b.betrag),...(normPlz(b.plz)?{plz:normPlz(b.plz)}:{})}}
+function normPlz(v){const s=String(v??'').replace(/\D/g,'');return s.length===5?s:''}
 function valid(b){return b.nr&&/^\d{4}-\d{2}-\d{2}$/.test(b.date)&&b.mandant&&b.kat&&b.person&&Number.isFinite(b.cents)}
 function mergeBookings(list){let added=0,skipped=0;for(const raw of list){const b=norm(raw);if(!valid(b)){skipped++;continue}
  if(state.bookings.some(x=>x.nr===b.nr)){skipped++;continue}
@@ -64,24 +65,32 @@ function render(){document.querySelectorAll('.mlabel').forEach(e=>e.textContent=
  const card=(t,rows)=>`<p class="gh">${t}</p><div class="group card">${rows.length?rows.map(([k,v])=>`<div><span>${esc(k)}</span><b>${eur(v)}</b></div>`).join(''):'<div><span>–</span></div>'}</div>`;
  const kats={};items.forEach(b=>{const k=b.mandant+'|'+b.kat;(kats[k]=kats[k]||{c:0,n:0});kats[k].c+=b.cents;kats[k].n++});const kr=Object.entries(kats).sort((a,b)=>b[1].c-a[1].c);
  const katCard=`<p class="gh">Pro Kategorie</p><div class="group kcard">${kr.length?kr.map(([k,v])=>{const[m,...r]=k.split('|');const kt=r.join('|');return `<button class="krow" data-kat="${esc(k)}"><span class="av" style="--h:${hue(kt)}">${initial(kt)}</span><span class="kn">${esc(kt)}<small>${esc(m)} · ${plural(v.n,'Buchung','Buchungen')}</small></span><b>${eur(v.c)}</b><i class="chev">›</i></button>`}).join(''):'<div class="empty">–</div>'}</div>`;
- $('#sums').innerHTML=`<div class="hero"><span>Monatssumme</span><b id="sumTotal">${eur(items.reduce((s,b)=>s+b.cents,0))}</b><small>${plural(items.length,'Buchung','Buchungen')}</small></div>`+katCard+card('Pro Mandant',group('mandant'))+card('Pro Person',group('person'));
+ $('#sums').innerHTML=`<div class="hero"><span>Monatssumme</span><b id="sumTotal">${eur(items.reduce((s,b)=>s+b.cents,0))}</b><small>${plural(items.length,'Buchung','Buchungen')}</small></div>`+katCard+plzCard(items)+card('Pro Mandant',group('mandant'))+card('Pro Person',group('person'));
  renderKat();
  $('#persons').innerHTML=state.persons.map(p=>`<span class="chip">${esc(p)}<button data-delp="${esc(p)}" aria-label="entfernen">✕</button></span>`).join('');
  $('#mandanten').innerHTML=Object.entries(state.mandanten).map(([m,ks])=>`<div class="group m"><b>${esc(m)}</b><div class="chips">${ks.map(k=>`<span class="chip">${esc(k)}<button data-delk="${esc(m)}|${esc(k)}">✕</button></span>`).join('')}</div>
  <div class="row"><input placeholder="Neue Kategorie" data-newk="${esc(m)}"><button class="tinted" data-addk="${esc(m)}" style="flex:0 0 52px">＋</button></div></div>`).join('');
  $('#ver').textContent=VERSION;if(window.renderClock)renderClock()}
+let plzScope='m';
+function plzCard(monthIt){const its=plzScope==='y'?state.bookings.filter(b=>b.date.startsWith(cur.y+'-')):monthIt;const tot=its.reduce((s,b)=>s+b.cents,0);
+ const g={};its.forEach(b=>{const p=normPlz(b.plz);const k=p?p.slice(0,2):'';(g[k]=g[k]||{c:0,n:0});g[k].c+=b.cents;g[k].n++});
+ const rows=Object.entries(g).sort((x,y)=>(x[0]===''?1:0)-(y[0]===''?1:0)||y[1].c-x[1].c);
+ const pct=c=>tot?(Math.round(c/tot*1000)/10).toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})+' %':'–';
+ return `<p class="gh">Umsatz nach PLZ-Gebiet</p><div class="seg plzseg"><button data-plzs="m" class="${plzScope==='m'?'on':''}">${MONTHS[cur.m]}</button><button data-plzs="y" class="${plzScope==='y'?'on':''}">Ganzes Jahr ${cur.y}</button></div>
+ <div class="group kcard plz">${rows.length?rows.map(([k,v])=>`<div class="krow" style="--h:${k?(+k*37)%360:0}"><span class="av${k?'':' none'}">${k||'–'}</span><span class="kn">${k?'PLZ-Gebiet '+k:'ohne PLZ'}<small>${plural(v.n,'Buchung','Buchungen')} · ${pct(v.c)}</small><i class="bar" style="width:${tot?Math.max(2,v.c/tot*100):0}%"></i></span><b>${eur(v.c)}</b></div>`).join(''):'<div class="empty">Keine Buchungen</div>'}</div>`}
 function fillSelect(sel,opts,val){sel.innerHTML=opts.map(o=>`<option${o===val?' selected':''}>${esc(o)}</option>`).join('')}
 function fillKat(val){fillSelect($('#f-kat'),state.mandanten[$('#f-mandant').value]||[],val)}
 function openForm(b){editId=b?b.id:null;$('#formTitle').textContent=b?'Buchung bearbeiten':'Neue Buchung';
  $('#f-nr').value=b?b.nr:'';const d=new Date();const def=(cur.y===d.getFullYear()&&cur.m===d.getMonth())?d.toISOString().slice(0,10):`${cur.y}-${String(cur.m+1).padStart(2,'0')}-01`;
  $('#f-date').value=b?b.date:def;fillSelect($('#f-mandant'),Object.keys(state.mandanten),b?b.mandant:'CMS');fillKat(b&&b.kat);
- fillSelect($('#f-person'),state.persons,b?b.person:'Janik');$('#f-betrag').value=b?(b.cents/100).toFixed(2).replace('.',','):'';
+ fillSelect($('#f-person'),state.persons,b?b.person:'Janik');$('#f-betrag').value=b?(b.cents/100).toFixed(2).replace('.',','):'';$('#f-plz').value=b&&b.plz?b.plz:'';
  $('#dupWarn').hidden=true;$('#form').hidden=false;$('#addBtn').parentNode.hidden=true;$('#f-nr').focus()}
 function closeForm(){$('#form').hidden=true;$('#addBtn').parentNode.hidden=false;editId=null}
 function dup(nr){return state.bookings.find(x=>x.nr===nr.trim()&&x.id!==editId)}
 $('#f-nr').addEventListener('input',e=>{const d=dup(e.target.value);$('#dupWarn').hidden=!d;if(d)$('#dupWarn').textContent=`Auftragsnummer ${d.nr} gibt es schon (${fmtDate(d.date)}, ${d.kat}, ${eur(d.cents)}).`});
 $('#f-mandant').addEventListener('change',()=>fillKat());
-$('#form').addEventListener('submit',e=>{e.preventDefault();const b={id:editId||uid(),nr:$('#f-nr').value.trim(),date:$('#f-date').value,mandant:$('#f-mandant').value,kat:$('#f-kat').value,person:$('#f-person').value,cents:parseEur($('#f-betrag').value)};
+$('#form').addEventListener('submit',e=>{e.preventDefault();const b={id:editId||uid(),nr:$('#f-nr').value.trim(),date:$('#f-date').value,mandant:$('#f-mandant').value,kat:$('#f-kat').value,person:$('#f-person').value,cents:parseEur($('#f-betrag').value)};const pv=$('#f-plz').value.trim();
+ if(pv&&!normPlz(pv)){toast('PLZ bitte mit 5 Ziffern (oder leer lassen)');return}if(normPlz(pv))b.plz=normPlz(pv);
  if(!valid(b)){toast('Bitte alle Felder richtig ausfüllen');return}
  if(dup(b.nr)){toast('Doppelte Auftragsnummer, nicht gespeichert');$('#dupWarn').hidden=false;return}
  if(editId)state.bookings=state.bookings.map(x=>x.id===editId?b:x);else state.bookings.push(b);
@@ -89,7 +98,7 @@ $('#form').addEventListener('submit',e=>{e.preventDefault();const b={id:editId||
 $('#addBtn').onclick=()=>openForm();$('#cancel').onclick=closeForm;
 document.querySelectorAll('.mprev').forEach(b=>b.onclick=()=>{cur.m--;if(cur.m<0){cur.m=11;cur.y--}render()});document.querySelectorAll('.mnext').forEach(b=>b.onclick=()=>{cur.m++;if(cur.m>11){cur.m=0;cur.y++}render()});
 document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('on',x===b));katView=null;$('#tab-kat').hidden=true;['list','sum','clock','set'].forEach(t=>$('#tab-'+t).hidden=t!==b.dataset.tab);scrollTo(0,0)});
-document.addEventListener('click',e=>{const kr=e.target.closest&&e.target.closest('[data-kat]');if(kr){const[m,...k]=kr.dataset.kat.split('|');openKat(m,k.join('|'));return}
+document.addEventListener('click',e=>{const ps=e.target.closest&&e.target.closest('[data-plzs]');if(ps){plzScope=ps.dataset.plzs;render();return}const kr=e.target.closest&&e.target.closest('[data-kat]');if(kr){const[m,...k]=kr.dataset.kat.split('|');openKat(m,k.join('|'));return}
  const t=e.target,d=t.dataset;
  if(d.edit){if($('#tab-list').hidden)document.querySelector('.tabbar [data-tab=list]').click();openForm(state.bookings.find(b=>b.id===d.edit));$('#form').scrollIntoView({block:'start'})}
  else if(d.del){const b=state.bookings.find(x=>x.id===d.del);if(b&&confirm(`Buchung ${b.nr} (${eur(b.cents)}) löschen?`)){state.bookings=state.bookings.filter(x=>x.id!==d.del);save();render();toast('Gelöscht')}}
@@ -101,8 +110,8 @@ $('#addMandant').onclick=()=>{const v=$('#newMandant').value.trim().toUpperCase(
 function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove()}
 const stamp=()=>new Date().toISOString().slice(0,10);
 $('#expJson').onclick=()=>download(`geldmanager-${stamp()}.json`,JSON.stringify(state,null,2),'application/json');
-$('#expCsv').onclick=()=>{const q=s=>`"${String(s).replace(/"/g,'""')}"`;const rows=[['Auftragsnummer','Datum','Mandant','Kategorie','Person','Betrag EUR'].join(';')]
- .concat([...state.bookings].sort((a,b)=>a.date.localeCompare(b.date)).map(b=>[q(b.nr),fmtDate(b.date),q(b.mandant),q(b.kat),q(b.person),(b.cents/100).toFixed(2).replace('.',',')].join(';')));
+$('#expCsv').onclick=()=>{const q=s=>`"${String(s).replace(/"/g,'""')}"`;const rows=[['Auftragsnummer','Datum','Mandant','Kategorie','Person','Betrag EUR','PLZ'].join(';')]
+ .concat([...state.bookings].sort((a,b)=>a.date.localeCompare(b.date)).map(b=>[q(b.nr),fmtDate(b.date),q(b.mandant),q(b.kat),q(b.person),(b.cents/100).toFixed(2).replace('.',','),q(b.plz||'')].join(';')));
  download(`geldmanager-${stamp()}.csv`,'\ufeff'+rows.join('\r\n'),'text/csv')};
 $('#impBtn').onclick=()=>$('#impFile').click();
 $('#impFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());
@@ -201,13 +210,16 @@ function parseOcr(text){let lines=text.split(/\n/).map(l=>l.replace(/[—–]/g,
   if(cur)cur.lines.push(l)}
  // abgeschnittene letzte Karte (nur Kopfzeile, kein Betrag) ignorieren
  if(out.length){const L=out[out.length-1];if(!L.lines.some(l=>/[a-zäöü]{3}/i.test(l)||/\d[,.]\d\d\s*(€|EUR)/i.test(l)))out.pop()}
- for(const o of out){o.kunde=(o.lines.find(l=>/[a-zäöü]{3}/i.test(l)&&!/^(gp|händler|haendler)/i.test(l))||'').slice(0,60);
+ for(const o of out){o.plz=findPlz(o.lines);o.kunde=(o.lines.find(l=>/[a-zäöü]{3}/i.test(l)&&!/^(gp|händler|haendler)/i.test(l))||'').slice(0,60);
   let amt=null;for(const l of o.lines){if(/\b(gp|händler|haendler|nr)\b/i.test(l))continue;
    const ln=normAmtLine(l);const ms=[...ln.matchAll(/(\d{1,3}(?:\.\d{3})+|\d+)\s*[,.]\s*(\d{2})\s*(€|EUR|E\b)/gi)];if(ms.length)amt=ms[ms.length-1];
    else if(amt==null){const m2=l.match(/(?:pauschale|betrag)\D*(\d+)\s*[,.]\s*(\d{2})/i);if(m2)amt=m2}}
   if(amt)o.cents=parseInt(amt[1].replace(/\D/g,''),10)*100+parseInt(amt[2],10);
   else{const g=guessAmt(o.lines.filter(l=>!/\b(gp|händler|haendler|nr)\b/i.test(l)));if(Number.isFinite(g)){o.cents=g;o.amtGuess=true}}delete o.lines}
  return out.length?out:parseApp(text)}
+// PLZ aus der Adresszeile (z. B. "DE-15517 Fürstenwalde"), nicht Dealer-/Group-Nummern
+function findPlz(lines){for(const l of lines){const m=l.match(/\b[DO0][EF]\s*[-–~]?\s*(\d{5})(?!\d)/i);if(m)return m[1]}
+ for(const l of lines){if(/dealer|group|gp|händler|haendler|nr\b|auftrag/i.test(l))continue;const m=l.match(/(?:^|[^\d])(\d{5})\s+[A-ZÄÖÜa-zäöü]{3}/);if(m)return m[1]}return''}
 // Bildschirmfotos aus einer Einnahmen-App (Kopf: Kategorie + Mandant, "November 2026", Zeilen: Auftragsnr. + "+20,00 €")
 const MON_RE='januar|februar|m.rz|april|mai|juni|juli|august|september|oktober|november|dezember';
 const monIdx=s=>{s=s.toLowerCase();return s.startsWith('m')&&s.length===4?2:MONTHS.findIndex(m=>m.toLowerCase()===s)};
@@ -280,7 +292,7 @@ function vote(passes){passes=passes.filter(Array.isArray);if(!passes.length)retu
   const am=pick(cs.map(String),(a,b)=>a-b);if(am.v!==undefined){o.cents=+am.v;if(!am.sure||os.some(x=>x.cents===o.cents&&x.amtGuess)||(o.app&&os.some(x=>x.cents===o.cents&&Number.isFinite(x.alt4))))warn.push('Betrag unsicher')}else o.cents=NaN;
   const kt=pick(os.map(x=>x.mandant+'|'+x.kat),(a,b)=>0);[o.mandant,o.kat]=kt.v.split('|');
   const dt=pick(os.map(x=>x.date),(a,b)=>0);o.date=dt.v;if(!dt.sure||os.some(x=>x.dateWarn))warn.push('Datum unsicher');
-  const pp=pick(os.map(x=>x.person||'').filter(Boolean),(a,b)=>0);o.person=pp.v||'';o.ocrWarn=warn;delete o.alt4;delete o.dateWarn;delete o.amtGuess;return o})}
+  const pp=pick(os.map(x=>x.person||'').filter(Boolean),(a,b)=>0);o.person=pp.v||'';const pz=pick(os.map(x=>x.plz||'').filter(Boolean),(a,b)=>0);o.plz=pz.v||'';o.ocrWarn=warn;delete o.alt4;delete o.dateWarn;delete o.amtGuess;return o})}
 function markRows(init){const seen={};reviewRows.forEach(r=>{r.notes=init?[...(r.ocrWarn||[])]:(r.notes||[]).filter(n=>/unsicher/.test(n)&&!r.touched);r.known=!!(state.mandanten[r.mandant]||[]).includes(r.kat);
  if(!r.known)r.notes.push('Kategorie unbekannt');if(state.bookings.some(b=>b.nr===r.nr))r.notes.push('Auftragsnummer schon gebucht');
  if(seen[r.nr])r.notes.push('Doppelt in diesem Import');seen[r.nr]=1;if(!Number.isFinite(r.cents))r.notes.push('Betrag fehlt');if(init&&r.notes.length)r.on=false})}
@@ -293,17 +305,18 @@ function renderReview(){const el=$('#review');el.hidden=false;const opt=(a,v)=>a
  <div><label>Mandant</label><select data-rv="${i}" data-f="mandant">${r.mandant?'':'<option selected value="">–</option>'}${opt(Object.keys(state.mandanten),r.mandant)}</select></div>
  <div><label>Kategorie</label><select data-rv="${i}" data-f="kat">${r.known?'':`<option selected value="">${esc(r.kat||'–')} ?</option>`}${opt(state.mandanten[r.mandant]||[],r.kat)}</select></div>
  <div><label>Betrag €</label><input data-rv="${i}" data-f="betrag" inputmode="decimal" value="${Number.isFinite(r.cents)?(r.cents/100).toFixed(2).replace('.',','):''}"></div>
- <div><label>Person</label><select data-rv="${i}" data-f="person">${opt(state.persons,r.person)}</select></div></div>
+ <div><label>Person</label><select data-rv="${i}" data-f="person">${opt(state.persons,r.person)}</select></div>
+ <div><label>PLZ</label><input data-rv="${i}" data-f="plz" value="${esc(r.plz||'')}" inputmode="numeric" maxlength="5" placeholder="–"></div></div>
  ${r.notes.length?`<div class="note">⚠︎ ${r.notes.join(' · ')}</div>`:''}</div>`).join('')+'</section>').join('')+
  `<div class="row"><button id="rvCancel">Verwerfen</button><button id="rvBook" class="primary">Buchen (${reviewRows.filter(r=>r.on).length})</button></div>`;
  $('#rvAll').onchange=e=>{reviewRows.forEach(r=>r.person=e.target.value);renderReview()};
  el.querySelectorAll('[data-rv]').forEach(inp=>inp.addEventListener('change',e=>{const r=reviewRows[+inp.dataset.rv],f=inp.dataset.f;
-  if(f!=='on')r.touched=true;if(f==='on')r.on=inp.checked;else if(f==='betrag')r.cents=parseEur(inp.value);else{r[f]=inp.value.trim();if(f==='mandant')r.kat=(state.mandanten[r.mandant]||[]).includes(r.kat)?r.kat:''}
+  if(f!=='on')r.touched=true;if(f==='on')r.on=inp.checked;else if(f==='betrag')r.cents=parseEur(inp.value);else if(f==='plz')r.plz=normPlz(inp.value);else{r[f]=inp.value.trim();if(f==='mandant')r.kat=(state.mandanten[r.mandant]||[]).includes(r.kat)?r.kat:''}
   markRows(false);renderReview()}));
  $('#rvCancel').onclick=()=>{reviewRows=[];el.hidden=true};
  $('#rvBook').onclick=()=>{const sel=reviewRows.filter(r=>r.on);if(!sel.length){toast('Nichts ausgewählt');return}const bad=sel.filter(r=>r.notes.length);
   if(bad.length){toast(`${bad.length} markierte Zeile(n) erst korrigieren oder abwählen`);return}
-  sel.forEach(r=>state.bookings.push({id:uid(),nr:r.nr,date:r.date,mandant:r.mandant,kat:r.kat,person:r.person,cents:r.cents}));save();
+  sel.forEach(r=>state.bookings.push({id:uid(),nr:r.nr,date:r.date,mandant:r.mandant,kat:r.kat,person:r.person,cents:r.cents,...(normPlz(r.plz)?{plz:normPlz(r.plz)}:{})}));save();
   reviewRows=reviewRows.filter(r=>!r.on);if(!reviewRows.length)el.hidden=true;else{markRows(false);renderReview()}
   if(sel[0]){const[y,m]=sel[0].date.split('-');cur={y:+y,m:+m-1}}render();toast(`${sel.length} gebucht`)}}
 $('#photoBtn').onclick=()=>$('#photoFile').click();$('#photoFile').onchange=e=>handlePhotos(e.target.files);
