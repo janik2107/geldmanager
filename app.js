@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v12', KEY='geldmanager-v1';
+const VERSION='gm-v13', KEY='geldmanager-v1';
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
@@ -20,13 +20,20 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 function norm(b){return{id:b.id||uid(),nr:String(b.nr).trim(),date:b.date,mandant:b.mandant,kat:b.kat,person:b.person,cents:Number.isInteger(b.cents)?b.cents:parseEur(b.betrag),...(normPlz(b.plz)?{plz:normPlz(b.plz)}:{})}}
 function normPlz(v){const s=String(v??'').replace(/\D/g,'');return s.length===5?s:''}
 function valid(b){return b.nr&&/^\d{4}-\d{2}-\d{2}$/.test(b.date)&&b.mandant&&b.kat&&b.person&&Number.isFinite(b.cents)}
-function mergeBookings(list){let added=0,skipped=0;for(const raw of list){const b=norm(raw);if(!valid(b)){skipped++;continue}
- if(state.bookings.some(x=>x.nr===b.nr)){skipped++;continue}
+let plzFilled=0;function mergeBookings(list){let added=0,skipped=0;for(const raw of list){const b=norm(raw);if(!valid(b)){skipped++;continue}
+ const ex=state.bookings.find(x=>x.nr===b.nr);if(ex){if(b.plz&&!normPlz(ex.plz)){ex.plz=b.plz;plzFilled++}skipped++;continue}
  if(!state.persons.includes(b.person))state.persons.push(b.person);
  if(!state.mandanten[b.mandant])state.mandanten[b.mandant]=[];if(!state.mandanten[b.mandant].includes(b.kat))state.mandanten[b.mandant].push(b.kat);
  state.bookings.push(b);added++}save();return{added,skipped}}
+// PLZ nur bei passenden Buchungen OHNE PLZ ergänzen (Betrag/Rest bleibt)
+function fillPlz(map){let n=0;for(const b of state.bookings){const p=normPlz(map[b.nr]);if(p&&!normPlz(b.plz)){b.plz=p;n++}}if(n)save();return n}
 // Einmaliger Setup-Link: Daten im #Fragment (geht nie an den Server)
-function fromFragment(){const h=location.hash;if(!h.startsWith('#import='))return;
+function fromFragment(){const h=location.hash;
+ if(h.startsWith('#plz=')){try{let s=h.slice(5).replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';
+   const map=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s),c=>c.charCodeAt(0))));const n=fillPlz(map&&typeof map==='object'?map:{});
+   setTimeout(()=>alert(n?`${n} ${n===1?'Buchung':'Buchungen'}: PLZ ergänzt.`:'Keine passende Buchung ohne PLZ gefunden – nichts geändert.'),300)}
+  catch(e){toast('PLZ-Link ungültig')}history.replaceState(null,'',location.pathname+location.search);return}
+ if(!h.startsWith('#import='))return;
  try{let s=h.slice(8).replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';
   const json=new TextDecoder().decode(Uint8Array.from(atob(s),c=>c.charCodeAt(0)));
   const data=JSON.parse(json);const r=mergeBookings(data.bookings||data);
@@ -70,6 +77,9 @@ function render(){document.querySelectorAll('.mlabel').forEach(e=>e.textContent=
  $('#persons').innerHTML=state.persons.map(p=>`<span class="chip">${esc(p)}<button data-delp="${esc(p)}" aria-label="entfernen">✕</button></span>`).join('');
  $('#mandanten').innerHTML=Object.entries(state.mandanten).map(([m,ks])=>`<div class="group m"><b>${esc(m)}</b><div class="chips">${ks.map(k=>`<span class="chip">${esc(k)}<button data-delk="${esc(m)}|${esc(k)}">✕</button></span>`).join('')}</div>
  <div class="row"><input placeholder="Neue Kategorie" data-newk="${esc(m)}"><button class="tinted" data-addk="${esc(m)}" style="flex:0 0 52px">＋</button></div></div>`).join('');
+ const np=state.bookings.filter(b=>!normPlz(b.plz)).sort((x,y)=>y.date.localeCompare(x.date));
+ $('#plzMissing').innerHTML=np.length?np.map(b=>`<div class="pm"><span><b>${esc(b.nr)}</b><small>${fmtDate(b.date)} · ${esc(b.kat)} · ${eur(b.cents)}</small></span><input data-plzfor="${esc(b.id)}" inputmode="numeric" maxlength="5" placeholder="PLZ"></div>`).join('')+'<button class="cellbtn" id="plzSave">PLZ speichern</button>':'<div class="empty">Alle Buchungen haben eine PLZ ✓</div>';
+ $('#plzCount').textContent=np.length?`(${np.length} ohne PLZ)`:'';
  $('#ver').textContent=VERSION;if(window.renderClock)renderClock()}
 let plzScope='m';
 function plzCard(monthIt){const its=plzScope==='y'?state.bookings.filter(b=>b.date.startsWith(cur.y+'-')):monthIt;const tot=its.reduce((s,b)=>s+b.cents,0);
@@ -98,7 +108,8 @@ $('#form').addEventListener('submit',e=>{e.preventDefault();const b={id:editId||
 $('#addBtn').onclick=()=>openForm();$('#cancel').onclick=closeForm;
 document.querySelectorAll('.mprev').forEach(b=>b.onclick=()=>{cur.m--;if(cur.m<0){cur.m=11;cur.y--}render()});document.querySelectorAll('.mnext').forEach(b=>b.onclick=()=>{cur.m++;if(cur.m>11){cur.m=0;cur.y++}render()});
 document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('on',x===b));katView=null;$('#tab-kat').hidden=true;['list','sum','clock','set'].forEach(t=>$('#tab-'+t).hidden=t!==b.dataset.tab);scrollTo(0,0)});
-document.addEventListener('click',e=>{const ps=e.target.closest&&e.target.closest('[data-plzs]');if(ps){plzScope=ps.dataset.plzs;render();return}const kr=e.target.closest&&e.target.closest('[data-kat]');if(kr){const[m,...k]=kr.dataset.kat.split('|');openKat(m,k.join('|'));return}
+document.addEventListener('click',e=>{if(e.target.id==='plzSave'){let n=0,bad=0;document.querySelectorAll('[data-plzfor]').forEach(i=>{const v=i.value.trim();if(!v)return;const p=normPlz(v);const b=state.bookings.find(x=>x.id===i.dataset.plzfor);if(!p){bad++;return}if(b&&!normPlz(b.plz)){b.plz=p;n++}});if(n)save();render();toast(bad?`${n} gespeichert, ${bad} ungültig (5 Ziffern)`:`${n} ${n===1?'PLZ':'PLZ'} gespeichert`);return}
+ const ps=e.target.closest&&e.target.closest('[data-plzs]');if(ps){plzScope=ps.dataset.plzs;render();return}const kr=e.target.closest&&e.target.closest('[data-kat]');if(kr){const[m,...k]=kr.dataset.kat.split('|');openKat(m,k.join('|'));return}
  const t=e.target,d=t.dataset;
  if(d.edit){if($('#tab-list').hidden)document.querySelector('.tabbar [data-tab=list]').click();openForm(state.bookings.find(b=>b.id===d.edit));$('#form').scrollIntoView({block:'start'})}
  else if(d.del){const b=state.bookings.find(x=>x.id===d.del);if(b&&confirm(`Buchung ${b.nr} (${eur(b.cents)}) löschen?`)){state.bookings=state.bookings.filter(x=>x.id!==d.del);save();render();toast('Gelöscht')}}
@@ -117,7 +128,7 @@ $('#impBtn').onclick=()=>$('#impFile').click();
 $('#impFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());
  if(d.persons)d.persons.forEach(p=>state.persons.includes(p)||state.persons.push(p));
  if(d.mandanten)for(const[m,ks]of Object.entries(d.mandanten)){state.mandanten[m]=state.mandanten[m]||[];ks.forEach(k=>state.mandanten[m].includes(k)||state.mandanten[m].push(k))}
- const r=mergeBookings(d.bookings||[]);const z=d.clock&&window.mergeClock?mergeClock(d.clock):0;render();toast(`Import: ${r.added} neu, ${r.skipped} übersprungen${z?`, ${z} Zeiten`:''}`)}catch(err){toast('Datei nicht lesbar')}e.target.value=''};
+ const r=mergeBookings(d.bookings||[]);const z=d.clock&&window.mergeClock?mergeClock(d.clock):0;render();toast(`Import: ${r.added} neu, ${r.skipped} übersprungen${plzFilled?`, ${plzFilled} PLZ ergänzt`:''}${z?`, ${z} Zeiten`:''}`);plzFilled=0}catch(err){toast('Datei nicht lesbar')}e.target.value=''};
 /* ---------- Fotos/Screenshots: OCR lokal im Browser ---------- */
 const normKey=s=>String(s).toLowerCase().replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/[^a-z0-9]/g,'');
 let ocrWorker=null,ocrBusy=false;
@@ -276,9 +287,10 @@ async function handlePhotos(files){files=[...(files||[])];if(!files.length||ocrB
  try{const tips='<p><b>Tipps:</b></p><p>• Auftrag gerade und scharf fotografieren, ganzes Blatt im Bild, gutes Licht</p><p>• Auftragsnummer (6 Ziffern) und Betrag müssen lesbar sein</p><p>• Bildschirmfotos aus der Einnahmen-App gehen auch</p>';
   const errHtml=errors.length?`<p>${errors.map(esc).join('<br>')}</p><p>Bitte nochmal versuchen. Hilft das nicht: App ganz schließen und neu öffnen.</p>`:'';
   if(!found.length){if(errors.length&&!empty)ocrDone('Fehler beim Lesen',errHtml,true);else ocrDone('Keine Buchung erkannt',errHtml+tips,!!errors.length);return}
+  const pm={};found.forEach(o=>{if(o.plz&&state.bookings.some(b=>b.nr===o.nr))pm[o.nr]=o.plz});const plzN=fillPlz(pm);if(plzN)render();
   reviewRows=found.map(o=>({...o,person:o.person||'Janik',on:true}));markRows(true);renderReview();
   const dups=reviewRows.filter(r=>state.bookings.some(b=>b.nr===r.nr)).length,n=reviewRows.length;
-  ocrDone(`${n} ${n===1?'Auftrag':'Aufträge'} erkannt`+(dups===n?' – alle schon gebucht':dups?`, davon ${dups} schon gebucht`:''),errHtml+(dups===n?'<p>Es gibt nichts Neues zu buchen. Die Aufträge stehen unten zur Kontrolle.</p>':'<p>Bitte unten prüfen und auf „Buchen“ tippen.</p>'),!!errors.length);
+  ocrDone(`${n} ${n===1?'Auftrag':'Aufträge'} erkannt`+(dups===n?' – alle schon gebucht':dups?`, davon ${dups} schon gebucht`:''),errHtml+(plzN?`<p><b>${plzN} ${plzN===1?'Buchung':'Buchungen'}: PLZ ergänzt</b> (Betrag unverändert).</p>`:'')+(dups===n?'<p>Es gibt nichts Neues zu buchen. Die Aufträge stehen unten zur Kontrolle.</p>':'<p>Bitte unten prüfen und auf „Buchen“ tippen.</p>'),!!errors.length);
   $('#review').scrollIntoView({behavior:'smooth',block:'start'})}
  catch(e){console.warn(e);ocrDone('Fehler',esc(e.message||String(e)),true)}}
 window.addEventListener('unhandledrejection',e=>{if(ocrBusy)console.warn('OCR',e.reason)});
