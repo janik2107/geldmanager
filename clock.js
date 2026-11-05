@@ -2,7 +2,14 @@
 /* ---------- Stempeluhr: Zeiten für Mitarbeiter (nur lokal, im selben Speicher wie die Buchungen) ---------- */
 function ensureClock(){const c=state.clock&&typeof state.clock==='object'?state.clock:{};
  if(!Array.isArray(c.people))c.people=['Ronny','Patrick'];if(!Array.isArray(c.entries))c.entries=[];if(!c.running||typeof c.running!=='object')c.running={};
+ if(!c.wages||typeof c.wages!=='object')c.wages={};c.people.forEach(p=>{if(!Number.isFinite(c.wages[p])||c.wages[p]<0)c.wages[p]=15});
  state.clock=c;return c}
+const DEF_WAGE=15;
+function wageOf(p){const w=ensureClock().wages[p];return Number.isFinite(w)&&w>=0?w:DEF_WAGE}
+function earnCents(min,p){return Math.round((Math.max(0,+min||0)/60)*wageOf(p)*100)}
+function fmtEarn(min,p){return eur(earnCents(min,p))}
+function fmtHEarn(min,p){return `${fmtH(min)} h · ${fmtEarn(min,p)}`}
+function fmtDecH(min){return (Math.max(0,+min||0)/60).toFixed(2).replace('.',',')}
 const hm=d=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 const toMin=t=>{const m=/^(\d{1,2}):(\d{2})$/.exec(t||'');return m?+m[1]*60+ +m[2]:NaN};
 function entryMin(e){const s=toMin(e.start),en=toMin(e.end);if(!Number.isFinite(s)||!Number.isFinite(en))return 0;let d=en-s;if(d<0)d+=1440;return Math.max(0,d-(+e.pause||0))}
@@ -25,20 +32,21 @@ function renderClock(){const el=$('#tab-clock');if(!el)return;const c=ensureCloc
   $('#ckBtn').textContent=r?'Ausstempeln':'Einstempeln';$('#ckBtn').className=r?'big out':'big in';
   $('#ckPause').hidden=!r;$('#ckPause').textContent=r&&r.pauseTs?'Pause beenden':'Pause starten';
   const today=isoDay(new Date());const tMin=personEntries(p).filter(e=>e.date===today).reduce((s,e)=>s+minOf(e),0);
-  $('#ckToday').textContent=`Heute gesamt: ${fmtH(tMin)} h`;tickClock()}
+  $('#ckToday').textContent=`Heute gesamt: ${fmtHEarn(tMin,p)}`;tickClock()}
  // Summen
  const[wa,wb]=weekRange(),mk=monthKey();
  $('#ckSums').innerHTML=`<div class="ckrow ckhd"><span>Person</span><span>Woche</span><span>${MONTHS[cur.m].slice(0,3)}.</span></div>`+c.people.map(q=>{const l=personEntries(q);
   const w=l.filter(e=>e.date>=wa&&e.date<=wb).reduce((s,e)=>s+minOf(e),0),m=l.filter(e=>e.date.startsWith(mk)).reduce((s,e)=>s+minOf(e),0);
-  return `<div class="ckrow"><span>${esc(q)}</span><b>${fmtH(w)} h</b><b>${fmtH(m)} h</b></div>`}).join('');
+  return `<div class="ckrow"><span>${esc(q)}<small style="display:block;color:var(--sec);font-size:12px">${wageOf(q).toFixed(2).replace('.',',')} €/Std.</small></span><b>${fmtH(w)} h<span class="ckearn">${fmtEarn(w,q)}</span></b><b>${fmtH(m)} h<span class="ckearn">${fmtEarn(m,q)}</span></b></div>`}).join('');
  // Liste nach Tagen
  const items=p?personEntries(p).filter(e=>e.date.startsWith(mk)).sort((a,b)=>b.date.localeCompare(a.date)||b.start.localeCompare(a.start)):[];
  $('#ckListHead').textContent=p?`Zeiten ${p} · ${MONTHS[cur.m]} ${cur.y}`:'Zeiten';
- const mTot=items.reduce((s,e)=>s+minOf(e),0);$('#ckMonthTot').textContent=p?`${fmtH(mTot)} h an ${new Set(items.map(e=>e.date)).size} Tagen`:'';
- $('#ckList').innerHTML=items.length?byDay(items).map(([d,list])=>`<section class="day"><div class="dh"><span>${esc(dayLabel(d))}</span><span><b>${fmtH(list.reduce((s,[e])=>s+minOf(e),0))} h</b></span></div><ul class="group bl">${list.map(([e])=>`<li class="ck${e.running?' run':''}" ${e.running?'':`data-cke="${e.id}"`}>
+ const mTot=items.reduce((s,e)=>s+minOf(e),0);$('#ckMonthTot').textContent=p?`${fmtHEarn(mTot,p)} an ${new Set(items.map(e=>e.date)).size} Tagen`:'';
+ $('#ckList').innerHTML=items.length?byDay(items).map(([d,list])=>{const dm=list.reduce((s,[e])=>s+minOf(e),0);return`<section class="day"><div class="dh"><span>${esc(dayLabel(d))}</span><span><b>${fmtH(dm)} h</b> <span class="ckday-earn">· ${fmtEarn(dm,p)}</span></span></div><ul class="group bl">${list.map(([e])=>`<li class="ck${e.running?' run':''}" ${e.running?'':`data-cke="${e.id}"`}>
   <span class="av" style="--h:${e.running?140:210}">${e.running?'▶':'⏱'}</span><div class="mid"><div class="t">${esc(e.start)} – ${e.running?'läuft':esc(e.end)}</div><div class="s">${e.pause?`Pause ${e.pause} min`:'ohne Pause'}${e.note?' · '+esc(e.note):''}</div></div>
-  <div class="end"><div class="b">${fmtH(minOf(e))} h</div>${e.running?'':'<div class="s chevs">›</div>'}</div></li>`).join('')}</ul></section>`).join(''):`<div class="group"><div class="empty">Keine Zeiten in diesem Monat</div></div>`;
+  <div class="end"><div class="ck-endb"><div class="b">${fmtH(minOf(e))} h</div><div class="cklist-earn">${fmtEarn(minOf(e),p)}</div></div>${e.running?'':'<div class="s chevs">›</div>'}</div></li>`).join('')}</ul></section>`}).join(''):`<div class="group"><div class="empty">Keine Zeiten in diesem Monat</div></div>`;
  $('#ckPersons').innerHTML=c.people.map(q=>`<span class="chip">${esc(q)}<button data-ckren="${esc(q)}" aria-label="umbenennen">✎</button><button data-ckdel="${esc(q)}" aria-label="entfernen">✕</button></span>`).join('');
+ const wg=$('#ckWages');if(wg)wg.innerHTML=c.people.map(q=>`<label class="cell">${esc(q)}<input data-wage="${esc(q)}" inputmode="decimal" placeholder="15,00" value="${String(wageOf(q).toFixed(2)).replace('.',',')}"><small>Verdienst = Std. × Lohn</small></label>`).join('')||'<div class="empty">Keine Personen</div>';
  schedTick()}
 function tickClock(){const c=ensureClock(),r=clockPerson&&c.running[clockPerson];const t=$('#ckTimer');if(t)t.textContent=r?fmtHMS(runNetMs(r)):'0:00:00'}
 let ckTimer=null;function schedTick(){const any=Object.keys(ensureClock().running).length>0;clearInterval(ckTimer);ckTimer=null;
@@ -48,7 +56,7 @@ function ckStamp(){const c=ensureClock(),p=clockPerson;if(!p)return;const r=c.ru
  if(!r){c.running[p]={startTs:now,pauseTs:null,pauseMs:0};save();toast(`${p} eingestempelt ${hm(new Date(now))}`)}
  else{const pm=(r.pauseMs||0)+(r.pauseTs?now-r.pauseTs:0);const e={id:uid(),person:p,date:isoDay(new Date(r.startTs)),start:hm(new Date(r.startTs)),end:hm(new Date(now)),pause:Math.round(pm/60000),note:r.note||''};
   if(now-r.startTs>=86400000)e.note=(e.note?e.note+' · ':'')+'länger als 24 h, bitte prüfen';
-  c.entries.push(e);delete c.running[p];save();toast(`${p} ausgestempelt: ${fmtH(entryMin(e))} h`)}
+  c.entries.push(e);delete c.running[p];save();toast(`${p} ausgestempelt: ${fmtHEarn(entryMin(e),p)}`)}
  renderClock()}
 function pauseToggle(){const c=ensureClock(),r=c.running[clockPerson];if(!r)return;const now=Date.now();
  if(r.pauseTs){r.pauseMs=(r.pauseMs||0)+now-r.pauseTs;r.pauseTs=null;toast('Pause beendet')}else{r.pauseTs=now;toast('Pause gestartet')}save();renderClock()}
@@ -57,8 +65,8 @@ function openCk(e){const c=ensureClock();clockEdit=e?e.id:null;$('#ckFormTitle')
  $('#ck-pause').value=e?e.pause:30;$('#ck-note').value=e?e.note||'':'';$('#ckDel').hidden=!e;$('#ckForm').hidden=false;$('#ckAdd').parentNode.hidden=true;$('#ckPrev').textContent='';ckPreview();$('#ckForm').scrollIntoView({block:'start'})}
 function closeCk(){$('#ckForm').hidden=true;$('#ckAdd').parentNode.hidden=false;clockEdit=null}
 function ckPreview(){const e={start:$('#ck-start').value,end:$('#ck-end').value,pause:+$('#ck-pause').value||0};const ok=Number.isFinite(toMin(e.start))&&Number.isFinite(toMin(e.end));
- $('#ckPrev').textContent=ok?`Arbeitszeit: ${fmtH(entryMin(e))} h${toMin(e.end)<toMin(e.start)?' (über Mitternacht)':''}`:''}
-['#ck-start','#ck-end','#ck-pause'].forEach(s=>$(s).addEventListener('input',ckPreview));
+ const who=$('#ck-person')&&$('#ck-person').value||clockPerson;$('#ckPrev').textContent=ok?`Arbeitszeit: ${fmtHEarn(entryMin(e),who)}${toMin(e.end)<toMin(e.start)?' (über Mitternacht)':''}`:''}
+['#ck-start','#ck-end','#ck-pause','#ck-person'].forEach(s=>$(s).addEventListener('input',ckPreview));
 $('#ckForm').addEventListener('submit',ev=>{ev.preventDefault();const c=ensureClock();
  const e={id:clockEdit||uid(),person:$('#ck-person').value,date:$('#ck-date').value,start:$('#ck-start').value,end:$('#ck-end').value,pause:Math.max(0,Math.round(+String($('#ck-pause').value).replace(',','.')||0)),note:$('#ck-note').value.trim().slice(0,120)};
  if(!e.person||!/^\d{4}-\d{2}-\d{2}$/.test(e.date)||!Number.isFinite(toMin(e.start))||!Number.isFinite(toMin(e.end))){toast('Bitte Datum, Beginn und Ende ausfüllen');return}
@@ -71,25 +79,28 @@ document.addEventListener('click',ev=>{const t=ev.target.closest&&ev.target.clos
  if(d.ckp){clockPerson=d.ckp;renderClock()}
  else if(d.cke){const e=c.entries.find(x=>x.id===d.cke);if(e)openCk(e)}
  else if(d.ckren){const n=(prompt('Neuer Name',d.ckren)||'').trim();if(!n||n===d.ckren)return;if(c.people.includes(n))return toast('Name gibt es schon');
-  c.people=c.people.map(x=>x===d.ckren?n:x);c.entries.forEach(e=>{if(e.person===d.ckren)e.person=n});if(c.running[d.ckren]){c.running[n]=c.running[d.ckren];delete c.running[d.ckren]}if(clockPerson===d.ckren)clockPerson=n;save();renderClock()}
+  c.people=c.people.map(x=>x===d.ckren?n:x);c.entries.forEach(e=>{if(e.person===d.ckren)e.person=n});if(c.running[d.ckren]){c.running[n]=c.running[d.ckren];delete c.running[d.ckren]}if(c.wages&&c.wages[d.ckren]!=null){c.wages[n]=c.wages[d.ckren];delete c.wages[d.ckren]}if(clockPerson===d.ckren)clockPerson=n;save();renderClock()}
  else if(d.ckdel){if(c.running[d.ckdel])return toast(`${d.ckdel} ist noch eingestempelt`);const n=c.entries.filter(e=>e.person===d.ckdel).length;
-  if(!confirm(n?`${d.ckdel} entfernen? ${n} Zeiten werden mit gelöscht.`:`${d.ckdel} entfernen?`))return;c.people=c.people.filter(x=>x!==d.ckdel);c.entries=c.entries.filter(e=>e.person!==d.ckdel);save();renderClock()}});
-$('#ckAddP').onclick=()=>{const c=ensureClock();const v=$('#ckNewP').value.trim();if(v&&!c.people.includes(v)){c.people.push(v);clockPerson=v;save();renderClock()}$('#ckNewP').value=''};
+  if(!confirm(n?`${d.ckdel} entfernen? ${n} Zeiten werden mit gelöscht.`:`${d.ckdel} entfernen?`))return;c.people=c.people.filter(x=>x!==d.ckdel);c.entries=c.entries.filter(e=>e.person!==d.ckdel);if(c.wages)delete c.wages[d.ckdel];save();renderClock()}});
+$('#ckAddP').onclick=()=>{const c=ensureClock();const v=$('#ckNewP').value.trim();if(v&&!c.people.includes(v)){c.people.push(v);c.wages[v]=DEF_WAGE;clockPerson=v;save();renderClock()}$('#ckNewP').value=''};
+// Stundenlohn ändern
+document.addEventListener('change',ev=>{const t=ev.target.closest&&ev.target.closest('[data-wage]');if(!t)return;const c=ensureClock(),p=t.dataset.wage;const n=parseEur(t.value);if(!Number.isFinite(n)||n<0){toast('Ungültiger Stundenlohn');t.value=String(wageOf(p).toFixed(2)).replace('.',',');return}c.wages[p]=n/100;save();renderClock();toast(`Stundenlohn ${p}: ${eur(n)}`)});
 // Export
 function monthRows(p){return personEntries(p,false).filter(e=>e.date.startsWith(monthKey())).sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start))}
 $('#ckCsv').onclick=()=>{const p=clockPerson;if(!p)return;const rows=monthRows(p);const q=s=>`"${String(s).replace(/"/g,'""')}"`;
- const lines=[['Person','Datum','Beginn','Ende','Pause (min)','Arbeitszeit (h:mm)','Arbeitszeit (Std. dezimal)','Notiz'].join(';')].concat(rows.map(e=>[q(p),fmtDate(e.date),e.start,e.end,e.pause||0,fmtH(entryMin(e)),(entryMin(e)/60).toFixed(2).replace('.',','),q(e.note||'')].join(';')));
- const tot=rows.reduce((s,e)=>s+entryMin(e),0);lines.push(['','Summe','','',rows.reduce((s,e)=>s+(+e.pause||0),0),fmtH(tot),(tot/60).toFixed(2).replace('.',','),''].join(';'));
+ const lines=[['Person','Datum','Beginn','Ende','Pause (min)','Arbeitszeit (h:mm)','Arbeitszeit (Std. dezimal)','Stundenlohn EUR','Verdienst EUR','Notiz'].join(';')].concat(rows.map(e=>{const mi=entryMin(e);return[q(p),fmtDate(e.date),e.start,e.end,e.pause||0,fmtH(mi),(mi/60).toFixed(2).replace('.',','),wageOf(p).toFixed(2).replace('.',','),(earnCents(mi,p)/100).toFixed(2).replace('.',','),q(e.note||'')].join(';')}));
+ const tot=rows.reduce((s,e)=>s+entryMin(e),0),te=rows.reduce((s,e)=>s+earnCents(entryMin(e),p),0);lines.push(['','Summe','','',rows.reduce((s,e)=>s+(+e.pause||0),0),fmtH(tot),(tot/60).toFixed(2).replace('.',','),wageOf(p).toFixed(2).replace('.',','),(te/100).toFixed(2).replace('.',','),''].join(';'));
  download(`stempeluhr-${normKey(p)}-${monthKey()}.csv`,'\ufeff'+lines.join('\r\n'),'text/csv')};
 function summaryText(p){const rows=monthRows(p);const wd=['So','Mo','Di','Mi','Do','Fr','Sa'];const tot=rows.reduce((s,e)=>s+entryMin(e),0);
- return [`Stempeluhr ${p} – ${MONTHS[cur.m]} ${cur.y}`,''].concat(rows.map(e=>{const[y,m,d]=e.date.split('-').map(Number);return `${wd[new Date(y,m-1,d).getDay()]} ${String(d).padStart(2,'0')}.${String(m).padStart(2,'0')}.  ${e.start}–${e.end}${e.pause?`  (${e.pause} min Pause)`:''}  = ${fmtH(entryMin(e))} h${e.note?'  · '+e.note:''}`}),
-  ['',`Gesamt: ${fmtH(tot)} h an ${new Set(rows.map(e=>e.date)).size} Tagen`]).join('\n')}
+ return [`Stempeluhr ${p} – ${MONTHS[cur.m]} ${cur.y}`,`Stundenlohn: ${wageOf(p).toFixed(2).replace('.',',')} €`,''].concat(rows.map(e=>{const[y,m,d]=e.date.split('-').map(Number);const mi=entryMin(e);return `${wd[new Date(y,m-1,d).getDay()]} ${String(d).padStart(2,'0')}.${String(m).padStart(2,'0')}.  ${e.start}–${e.end}${e.pause?`  (${e.pause} min Pause)`:''}  = ${fmtHEarn(mi,p)}${e.note?'  · '+e.note:''}`}),
+  ['',`Gesamt: ${fmtHEarn(tot,p)} an ${new Set(rows.map(e=>e.date)).size} Tagen`]).join('\n')}
 $('#ckShare').onclick=async()=>{const p=clockPerson;if(!p)return;const text=summaryText(p);
  try{if(navigator.share){await navigator.share({title:`Stempeluhr ${p}`,text});return}}catch(e){if(e&&e.name==='AbortError')return}
  try{await navigator.clipboard.writeText(text);toast('Zusammenfassung kopiert')}catch(e){download(`stempeluhr-${normKey(p)}-${monthKey()}.txt`,text,'text/plain')}};
 // Backup-Import
 window.mergeClock=function(d){const c=ensureClock();if(!d||typeof d!=='object')return 0;let n=0;
- (d.people||[]).forEach(p=>{if(typeof p==='string'&&p.trim()&&!c.people.includes(p))c.people.push(p)});
+ (d.people||[]).forEach(p=>{if(typeof p==='string'&&p.trim()&&!c.people.includes(p)){c.people.push(p);if(c.wages[p]==null)c.wages[p]=DEF_WAGE}});
+ if(d.wages&&typeof d.wages==='object')Object.entries(d.wages).forEach(([p,w])=>{if(typeof p==='string'&&Number.isFinite(+w)&&+w>=0){if(!c.people.includes(p))c.people.push(p);c.wages[p]=+w}});
  (d.entries||[]).forEach(e=>{if(!e||!e.person||!/^\d{4}-\d{2}-\d{2}$/.test(e.date||'')||!Number.isFinite(toMin(e.start))||!Number.isFinite(toMin(e.end)))return;
   if(c.entries.some(x=>x.id===e.id||(x.person===e.person&&x.date===e.date&&x.start===e.start)))return;c.entries.push({id:e.id||uid(),person:e.person,date:e.date,start:e.start,end:e.end,pause:+e.pause||0,note:String(e.note||'')});if(!c.people.includes(e.person))c.people.push(e.person);n++});
  save();return n};
