@@ -1,5 +1,15 @@
 'use strict';
-const VERSION='gm-v14', KEY='geldmanager-v1';
+const VERSION='gm-v15', KEY='geldmanager-v1';
+function lockPageZoom() {
+  const block = e => { if (e.cancelable) e.preventDefault(); };
+  document.addEventListener('gesturestart', block, { passive: false });
+  document.addEventListener('gesturechange', block, { passive: false });
+  document.addEventListener('gestureend', block, { passive: false });
+  document.addEventListener('touchmove', e => {
+    if (e.touches && e.touches.length > 1) block(e);
+  }, { passive: false });
+}
+lockPageZoom();
 const DEFAULT_MANDANTEN={
  'AUDIT':['Dacia - Prämie','Renault - Garantie','Renault - Prämie'],
  'CMS':['BMW','COSMO','Creditplus','DLL / AGCO','Ford-Bank','GAF','Open AG','Open AG HCBE','PF Service','Scania','Sonstiges','Stellantis','Stellantis - KM Pauschale','TKS','Wells Fargo'],
