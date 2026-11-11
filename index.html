@@ -58,13 +58,15 @@
   <div class="group"><button type="button" id="ckDel" class="cellbtn" style="color:var(--red)" hidden>Eintrag löschen</button></div>
  </form>
  <p class="gh">Summen (Stunden &amp; Verdienst, ohne Pausen)</p><div id="ckSums" class="group cksums"></div>
+ <p class="gh">Kosten gegenrechnen (pro Monat)</p><div id="ckCosts"></div>
+ <p class="foot" style="text-align:left;margin-top:-4px">Pro Person drei Beträge für den oben gewählten Monat: Auto, Versicherung und Tank. Sie werden vom Verdienst abgezogen.</p>
  <p class="gh" id="ckListHead">Zeiten</p><p class="foot" id="ckMonthTot" style="text-align:left;margin-top:-2px"></p>
  <div id="ckList"></div>
  <div class="row"><button id="ckCsv" class="tinted">CSV (Monat)</button><button id="ckShare" class="tinted">Teilen / Kopieren</button></div>
  <p class="gh">Personen Stempeluhr</p><div class="group pad"><div id="ckPersons" class="chips"></div>
  <div class="row"><input id="ckNewP" placeholder="Neue Person"><button id="ckAddP" class="tinted">Hinzufügen</button></div></div>
  <p class="gh">Stundenlohn (€ / Std.)</p><div id="ckWages" class="group"></div>
- <p class="foot" style="text-align:left;margin-top:6px">Verdienst = Stunden × Stundenlohn. Standard 15,00 € für jede Person.</p>
+ <p class="foot" style="text-align:left;margin-top:6px">Verdienst = Stunden × Stundenlohn. Standard 15,00 € für jede Person. Netto nach Kosten = Verdienst − Auto − Versicherung − Tank.</p>
 </section>
 <section id="tab-set" class="tab" hidden>
  <div class="top"><h1>Einstellungen</h1></div>

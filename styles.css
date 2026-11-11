@@ -95,3 +95,16 @@ li.ck{cursor:pointer}li.ck .b{color:var(--text)}li.run .b{color:var(--accent2)}.
 .cklist-earn,.ckday-earn{font-weight:500;color:var(--sec);font-size:12px}
 .ck-endb{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
 #ckWages .cell small{display:block;color:var(--sec);font-size:12px;margin-top:2px}
+
+/* gm-v16: Kosten gegenrechnen */
+.cksums .cknet{padding:2px 16px 12px}
+.cksums .cknet .ln{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:2px 0;font-size:14px;font-variant-numeric:tabular-nums}
+.cksums .cknet .ln span{color:var(--sec)}
+.cksums .cknet .ln b{font-weight:600}
+.cksums .cknet .neg b{font-weight:500}
+.cksums .cknet .cknetto{margin-top:4px;padding-top:6px;border-top:.5px solid var(--sep)}
+.cksums .cknet .cknetto span,.cksums .cknet .cknetto b{color:var(--text);font-weight:700;font-size:16px}
+.cksums .cknet+.ckrow::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--sep)}
+#ckCosts .group{margin-bottom:10px}
+.ckcosthead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:12px 16px 2px;font-weight:600}
+.ckcosthead small{color:var(--sec);font-weight:500;font-size:13px}

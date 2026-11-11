@@ -3,6 +3,7 @@
 function ensureClock(){const c=state.clock&&typeof state.clock==='object'?state.clock:{};
  if(!Array.isArray(c.people))c.people=['Ronny','Patrick'];if(!Array.isArray(c.entries))c.entries=[];if(!c.running||typeof c.running!=='object')c.running={};
  if(!c.wages||typeof c.wages!=='object')c.wages={};c.people.forEach(p=>{if(!Number.isFinite(c.wages[p])||c.wages[p]<0)c.wages[p]=15});
+ if(!c.costs||typeof c.costs!=='object'||Array.isArray(c.costs))c.costs={};
  state.clock=c;return c}
 const DEF_WAGE=15;
 function wageOf(p){const w=ensureClock().wages[p];return Number.isFinite(w)&&w>=0?w:DEF_WAGE}
@@ -22,6 +23,21 @@ let clockPerson=null,clockEdit=null;
 function weekRange(){const t=new Date();const d=(t.getDay()+6)%7;const a=new Date(t);a.setDate(t.getDate()-d);const b=new Date(a);b.setDate(a.getDate()+6);return[isoDay(a),isoDay(b)]}
 function personEntries(p,withRun=true){const c=ensureClock();const l=c.entries.filter(e=>e.person===p);if(withRun&&c.running[p])l.push(runEntry(p,c.running[p]));return l}
 const monthKey=()=>`${cur.y}-${String(cur.m+1).padStart(2,'0')}`;
+const COST_KINDS=[['auto','Auto'],['vers','Versicherung'],['tank','Tank']];
+function costCents(v){const n=Number(v);return Number.isFinite(n)&&n>0?Math.round(n):0}
+function monthCosts(p,mk){const c=ensureClock();const row=c.costs&&c.costs[p]&&c.costs[p][mk||monthKey()];
+ if(!row||typeof row!=='object'||Array.isArray(row))return{auto:0,vers:0,tank:0};
+ return{auto:costCents(row.auto),vers:costCents(row.vers),tank:costCents(row.tank)}}
+function costSum(k){return k.auto+k.vers+k.tank}
+function costInputVal(cents){return cents>0?(cents/100).toFixed(2).replace('.',','):''}
+function netBlock(earn,k){if(costSum(k)<=0)return'';
+ const lines=COST_KINDS.filter(([key])=>k[key]>0).map(([key,lab])=>`<div class="ln neg"><span>− ${lab}</span><b>${eur(k[key])}</b></div>`).join('');
+ return `<div class="cknet"><div class="ln"><span>Verdienst</span><b>${eur(earn)}</b></div>${lines}<div class="ln cknetto"><span>Netto nach Kosten</span><b>${eur(earn-costSum(k))}</b></div></div>`}
+function sumsHTML(){const c=ensureClock();const[wa,wb]=weekRange(),mk=monthKey();
+ return `<div class="ckrow ckhd"><span>Person</span><span>Woche</span><span>${MONTHS[cur.m].slice(0,3)}.</span></div>`+c.people.map(q=>{const l=personEntries(q);
+  const w=l.filter(e=>e.date>=wa&&e.date<=wb).reduce((s,e)=>s+minOf(e),0),m=l.filter(e=>e.date.startsWith(mk)).reduce((s,e)=>s+minOf(e),0);
+  const k=monthCosts(q,mk),mEarn=earnCents(m,q);
+  return `<div class="ckrow"><span>${esc(q)}<small style="display:block;color:var(--sec);font-size:12px">${wageOf(q).toFixed(2).replace('.',',')} €/Std.</small></span><b>${fmtH(w)} h<span class="ckearn">${fmtEarn(w,q)}</span></b><b>${fmtH(m)} h<span class="ckearn">${fmtEarn(m,q)}</span></b></div>${netBlock(mEarn,k)}`}).join('')}
 function renderClock(){const el=$('#tab-clock');if(!el)return;const c=ensureClock();
  if(!c.people.includes(clockPerson))clockPerson=c.people[0]||null;
  $('#ckPeople').innerHTML=c.people.map(p=>`<button class="seg${p===clockPerson?' on':''}" data-ckp="${esc(p)}">${esc(p)}${c.running[p]?' <i class="dot'+(c.running[p].pauseTs?' pz':'')+'"></i>':''}</button>`).join('')||'<span class="ksub">Erst unten eine Person anlegen</span>';
@@ -34,10 +50,11 @@ function renderClock(){const el=$('#tab-clock');if(!el)return;const c=ensureCloc
   const today=isoDay(new Date());const tMin=personEntries(p).filter(e=>e.date===today).reduce((s,e)=>s+minOf(e),0);
   $('#ckToday').textContent=`Heute gesamt: ${fmtHEarn(tMin,p)}`;tickClock()}
  // Summen
- const[wa,wb]=weekRange(),mk=monthKey();
- $('#ckSums').innerHTML=`<div class="ckrow ckhd"><span>Person</span><span>Woche</span><span>${MONTHS[cur.m].slice(0,3)}.</span></div>`+c.people.map(q=>{const l=personEntries(q);
-  const w=l.filter(e=>e.date>=wa&&e.date<=wb).reduce((s,e)=>s+minOf(e),0),m=l.filter(e=>e.date.startsWith(mk)).reduce((s,e)=>s+minOf(e),0);
-  return `<div class="ckrow"><span>${esc(q)}<small style="display:block;color:var(--sec);font-size:12px">${wageOf(q).toFixed(2).replace('.',',')} €/Std.</small></span><b>${fmtH(w)} h<span class="ckearn">${fmtEarn(w,q)}</span></b><b>${fmtH(m)} h<span class="ckearn">${fmtEarn(m,q)}</span></b></div>`}).join('');
+ const mk=monthKey();
+ $('#ckSums').innerHTML=sumsHTML();
+ const costsEl=$('#ckCosts');if(costsEl){const label=`${MONTHS[cur.m]} ${cur.y}`;
+  costsEl.innerHTML=c.people.map(q=>{const k=monthCosts(q);const inp=(key,lab)=>`<label class="cell">${lab}<input data-cost="${esc(q)}" data-kind="${key}" inputmode="decimal" autocomplete="off" placeholder="0,00" value="${costInputVal(k[key])}"></label>`;
+   return `<div class="group"><div class="ckcosthead">${esc(q)}<small>${esc(label)}</small></div>${inp('auto','Auto')}${inp('vers','Versicherung')}${inp('tank','Tank')}</div>`}).join('')||'<div class="group"><div class="empty">Keine Personen</div></div>'}
  // Liste nach Tagen
  const items=p?personEntries(p).filter(e=>e.date.startsWith(mk)).sort((a,b)=>b.date.localeCompare(a.date)||b.start.localeCompare(a.start)):[];
  $('#ckListHead').textContent=p?`Zeiten ${p} · ${MONTHS[cur.m]} ${cur.y}`:'Zeiten';
@@ -79,21 +96,31 @@ document.addEventListener('click',ev=>{const t=ev.target.closest&&ev.target.clos
  if(d.ckp){clockPerson=d.ckp;renderClock()}
  else if(d.cke){const e=c.entries.find(x=>x.id===d.cke);if(e)openCk(e)}
  else if(d.ckren){const n=(prompt('Neuer Name',d.ckren)||'').trim();if(!n||n===d.ckren)return;if(c.people.includes(n))return toast('Name gibt es schon');
-  c.people=c.people.map(x=>x===d.ckren?n:x);c.entries.forEach(e=>{if(e.person===d.ckren)e.person=n});if(c.running[d.ckren]){c.running[n]=c.running[d.ckren];delete c.running[d.ckren]}if(c.wages&&c.wages[d.ckren]!=null){c.wages[n]=c.wages[d.ckren];delete c.wages[d.ckren]}if(clockPerson===d.ckren)clockPerson=n;save();renderClock()}
+  c.people=c.people.map(x=>x===d.ckren?n:x);c.entries.forEach(e=>{if(e.person===d.ckren)e.person=n});if(c.running[d.ckren]){c.running[n]=c.running[d.ckren];delete c.running[d.ckren]}if(c.wages&&c.wages[d.ckren]!=null){c.wages[n]=c.wages[d.ckren];delete c.wages[d.ckren]}if(c.costs&&c.costs[d.ckren]){c.costs[n]=c.costs[d.ckren];delete c.costs[d.ckren]}if(clockPerson===d.ckren)clockPerson=n;save();renderClock()}
  else if(d.ckdel){if(c.running[d.ckdel])return toast(`${d.ckdel} ist noch eingestempelt`);const n=c.entries.filter(e=>e.person===d.ckdel).length;
-  if(!confirm(n?`${d.ckdel} entfernen? ${n} Zeiten werden mit gelöscht.`:`${d.ckdel} entfernen?`))return;c.people=c.people.filter(x=>x!==d.ckdel);c.entries=c.entries.filter(e=>e.person!==d.ckdel);if(c.wages)delete c.wages[d.ckdel];save();renderClock()}});
+  if(!confirm(n?`${d.ckdel} entfernen? ${n} Zeiten werden mit gelöscht.`:`${d.ckdel} entfernen?`))return;c.people=c.people.filter(x=>x!==d.ckdel);c.entries=c.entries.filter(e=>e.person!==d.ckdel);if(c.wages)delete c.wages[d.ckdel];if(c.costs)delete c.costs[d.ckdel];save();renderClock()}});
 $('#ckAddP').onclick=()=>{const c=ensureClock();const v=$('#ckNewP').value.trim();if(v&&!c.people.includes(v)){c.people.push(v);c.wages[v]=DEF_WAGE;clockPerson=v;save();renderClock()}$('#ckNewP').value=''};
 // Stundenlohn ändern
 document.addEventListener('change',ev=>{const t=ev.target.closest&&ev.target.closest('[data-wage]');if(!t)return;const c=ensureClock(),p=t.dataset.wage;const n=parseEur(t.value);if(!Number.isFinite(n)||n<0){toast('Ungültiger Stundenlohn');t.value=String(wageOf(p).toFixed(2)).replace('.',',');return}c.wages[p]=n/100;save();renderClock();toast(`Stundenlohn ${p}: ${eur(n)}`)});
+document.addEventListener('change',ev=>{const t=ev.target.closest&&ev.target.closest('[data-cost]');if(!t)return;const kind=t.dataset.kind;if(!COST_KINDS.some(([k])=>k===kind))return;
+ const c=ensureClock(),p=t.dataset.cost;if(!c.people.includes(p))return;const raw=t.value.trim();let cents=0;
+ if(raw){const n=parseEur(raw);if(!Number.isFinite(n)||n<0){toast('Ungültiger Betrag');t.value=costInputVal(monthCosts(p)[kind]);return}cents=n}
+ if(!c.costs[p]||typeof c.costs[p]!=='object'||Array.isArray(c.costs[p]))c.costs[p]={};
+ const mk=monthKey(),prev=c.costs[p][mk]&&typeof c.costs[p][mk]==='object'&&!Array.isArray(c.costs[p][mk])?c.costs[p][mk]:{};
+ const row={auto:costCents(prev.auto),vers:costCents(prev.vers),tank:costCents(prev.tank)};row[kind]=cents;c.costs[p][mk]=row;
+ t.value=costInputVal(cents);save();const sums=$('#ckSums');if(sums)sums.innerHTML=sumsHTML();toast(`${p} · ${COST_KINDS.find(([k])=>k===kind)[1]}: ${eur(cents)}`)});
 // Export
 function monthRows(p){return personEntries(p,false).filter(e=>e.date.startsWith(monthKey())).sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start))}
-$('#ckCsv').onclick=()=>{const p=clockPerson;if(!p)return;const rows=monthRows(p);const q=s=>`"${String(s).replace(/"/g,'""')}"`;
- const lines=[['Person','Datum','Beginn','Ende','Pause (min)','Arbeitszeit (h:mm)','Arbeitszeit (Std. dezimal)','Stundenlohn EUR','Verdienst EUR','Notiz'].join(';')].concat(rows.map(e=>{const mi=entryMin(e);return[q(p),fmtDate(e.date),e.start,e.end,e.pause||0,fmtH(mi),(mi/60).toFixed(2).replace('.',','),wageOf(p).toFixed(2).replace('.',','),(earnCents(mi,p)/100).toFixed(2).replace('.',','),q(e.note||'')].join(';')}));
- const tot=rows.reduce((s,e)=>s+entryMin(e),0),te=rows.reduce((s,e)=>s+earnCents(entryMin(e),p),0);lines.push(['','Summe','','',rows.reduce((s,e)=>s+(+e.pause||0),0),fmtH(tot),(tot/60).toFixed(2).replace('.',','),wageOf(p).toFixed(2).replace('.',','),(te/100).toFixed(2).replace('.',','),''].join(';'));
+const eurCsv=n=>(Math.round(n)/100).toFixed(2).replace('.',',');
+$('#ckCsv').onclick=()=>{const p=clockPerson;if(!p)return;const rows=monthRows(p);const q=s=>`"${String(s).replace(/"/g,'""')}"`;const k=monthCosts(p);
+ const lines=[['Person','Datum','Beginn','Ende','Pause (min)','Arbeitszeit (h:mm)','Arbeitszeit (Std. dezimal)','Stundenlohn EUR','Verdienst EUR','Auto','Versicherung','Tank','Netto','Notiz'].join(';')].concat(rows.map(e=>{const mi=entryMin(e);return[q(p),fmtDate(e.date),e.start,e.end,e.pause||0,fmtH(mi),(mi/60).toFixed(2).replace('.',','),wageOf(p).toFixed(2).replace('.',','),eurCsv(earnCents(mi,p)),'','','','',q(e.note||'')].join(';')}));
+ const tot=rows.reduce((s,e)=>s+entryMin(e),0),te=rows.reduce((s,e)=>s+earnCents(entryMin(e),p),0),net=te-costSum(k);
+ lines.push(['','Summe','','',rows.reduce((s,e)=>s+(+e.pause||0),0),fmtH(tot),(tot/60).toFixed(2).replace('.',','),wageOf(p).toFixed(2).replace('.',','),eurCsv(te),eurCsv(k.auto),eurCsv(k.vers),eurCsv(k.tank),eurCsv(net),''].join(';'));
  download(`stempeluhr-${normKey(p)}-${monthKey()}.csv`,'\ufeff'+lines.join('\r\n'),'text/csv')};
 function summaryText(p){const rows=monthRows(p);const wd=['So','Mo','Di','Mi','Do','Fr','Sa'];const tot=rows.reduce((s,e)=>s+entryMin(e),0);
+ const te=rows.reduce((s,e)=>s+earnCents(entryMin(e),p),0),k=monthCosts(p),net=te-costSum(k);
  return [`Stempeluhr ${p} – ${MONTHS[cur.m]} ${cur.y}`,`Stundenlohn: ${wageOf(p).toFixed(2).replace('.',',')} €`,''].concat(rows.map(e=>{const[y,m,d]=e.date.split('-').map(Number);const mi=entryMin(e);return `${wd[new Date(y,m-1,d).getDay()]} ${String(d).padStart(2,'0')}.${String(m).padStart(2,'0')}.  ${e.start}–${e.end}${e.pause?`  (${e.pause} min Pause)`:''}  = ${fmtHEarn(mi,p)}${e.note?'  · '+e.note:''}`}),
-  ['',`Gesamt: ${fmtHEarn(tot,p)} an ${new Set(rows.map(e=>e.date)).size} Tagen`]).join('\n')}
+  ['',`Gesamt: ${fmtHEarn(tot,p)} an ${new Set(rows.map(e=>e.date)).size} Tagen`,`Verdienst: ${eur(te)}`,`Auto: ${eur(k.auto)}`,`Versicherung: ${eur(k.vers)}`,`Tank: ${eur(k.tank)}`,`Netto: ${eur(net)}`]).join('\n')}
 $('#ckShare').onclick=async()=>{const p=clockPerson;if(!p)return;const text=summaryText(p);
  try{if(navigator.share){await navigator.share({title:`Stempeluhr ${p}`,text});return}}catch(e){if(e&&e.name==='AbortError')return}
  try{await navigator.clipboard.writeText(text);toast('Zusammenfassung kopiert')}catch(e){download(`stempeluhr-${normKey(p)}-${monthKey()}.txt`,text,'text/plain')}};
@@ -101,6 +128,15 @@ $('#ckShare').onclick=async()=>{const p=clockPerson;if(!p)return;const text=summ
 window.mergeClock=function(d){const c=ensureClock();if(!d||typeof d!=='object')return 0;let n=0;
  (d.people||[]).forEach(p=>{if(typeof p==='string'&&p.trim()&&!c.people.includes(p)){c.people.push(p);if(c.wages[p]==null)c.wages[p]=DEF_WAGE}});
  if(d.wages&&typeof d.wages==='object')Object.entries(d.wages).forEach(([p,w])=>{if(typeof p==='string'&&Number.isFinite(+w)&&+w>=0){if(!c.people.includes(p))c.people.push(p);c.wages[p]=+w}});
+ if(d.costs&&typeof d.costs==='object'&&!Array.isArray(d.costs))Object.entries(d.costs).forEach(([p,months])=>{
+  if(typeof p!=='string'||!p.trim()||!months||typeof months!=='object'||Array.isArray(months))return;
+  if(!c.people.includes(p)){c.people.push(p);if(c.wages[p]==null)c.wages[p]=DEF_WAGE}
+  if(!c.costs[p]||typeof c.costs[p]!=='object'||Array.isArray(c.costs[p]))c.costs[p]={};
+  Object.entries(months).forEach(([mk,row])=>{if(!/^\d{4}-\d{2}$/.test(mk)||!row||typeof row!=='object'||Array.isArray(row))return;
+   const inc={};COST_KINDS.forEach(([key])=>{const n=Number(row[key]);if(Number.isFinite(n)&&n>=0)inc[key]=Math.round(n)});if(!Object.keys(inc).length)return;
+   const curRow=c.costs[p][mk];
+   if(!curRow||typeof curRow!=='object'||Array.isArray(curRow)){c.costs[p][mk]=inc;return}
+   COST_KINDS.forEach(([key])=>{if(inc[key]==null)return;if(curRow[key]==null||!Number.isFinite(Number(curRow[key])))curRow[key]=inc[key]})})});
  (d.entries||[]).forEach(e=>{if(!e||!e.person||!/^\d{4}-\d{2}-\d{2}$/.test(e.date||'')||!Number.isFinite(toMin(e.start))||!Number.isFinite(toMin(e.end)))return;
   if(c.entries.some(x=>x.id===e.id||(x.person===e.person&&x.date===e.date&&x.start===e.start)))return;c.entries.push({id:e.id||uid(),person:e.person,date:e.date,start:e.start,end:e.end,pause:+e.pause||0,note:String(e.note||'')});if(!c.people.includes(e.person))c.people.push(e.person);n++});
  save();return n};

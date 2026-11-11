@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v15', KEY='geldmanager-v1';
+const VERSION='gm-v16', KEY='geldmanager-v1';
 function lockPageZoom() {
   const block = e => { if (e.cancelable) e.preventDefault(); };
   document.addEventListener('gesturestart', block, { passive: false });
