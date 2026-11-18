@@ -108,3 +108,11 @@ li.ck{cursor:pointer}li.ck .b{color:var(--text)}li.run .b{color:var(--accent2)}.
 #ckCosts .group{margin-bottom:10px}
 .ckcosthead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:12px 16px 2px;font-weight:600}
 .ckcosthead small{color:var(--sec);font-weight:500;font-size:13px}
+
+/* gm-v17: Tage zusätzlich pro Person */
+.pblock+.pblock{margin-top:10px}
+.ph{display:flex;align-items:center;gap:8px;padding:2px 14px 6px}
+.ph .av{flex:0 0 28px;width:28px;height:28px;border-radius:8px;font-size:14px}
+.ph .pn{font-size:15px;font-weight:600;letter-spacing:-.1px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph .ps{margin-left:auto;padding-left:8px;font-size:13px;color:var(--sec);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ph .ps b{color:var(--text);font-weight:600}
