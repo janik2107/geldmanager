@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='gm-v16', KEY='geldmanager-v1';
+const VERSION='gm-v17', KEY='geldmanager-v1';
 function lockPageZoom() {
   const block = e => { if (e.cancelable) e.preventDefault(); };
   document.addEventListener('gesturestart', block, { passive: false });
@@ -63,11 +63,15 @@ function dayHead(iso,list,word=['Buchung','Buchungen']){const sum=list.reduce((s
  return `<div class="dh"><span>${esc(dayLabel(iso))}</span><span>${plural(list.length,word[0],word[1])} · <b>${eur(sum)}</b></span></div>`}
 const initial=s=>esc((String(s||'?').match(/[A-Za-zÄÖÜäöü0-9]/)||['?'])[0].toUpperCase());
 const hue=s=>{let h=0;for(const c of String(s))h=(h*31+c.charCodeAt(0))%360;return h};
+function byPerson(list){const m=new Map();list.forEach(pair=>{const k=pair[0].person||'';if(!m.has(k))m.set(k,[]);m.get(k).push(pair)});
+ return [...m.entries()].sort((a,b)=>{const ia=state.persons.indexOf(a[0]),ib=state.persons.indexOf(b[0]);if(ia<0&&ib<0)return a[0].localeCompare(b[0],'de');if(ia<0)return 1;if(ib<0)return -1;return ia-ib})}
 function dayList(items,o={}){if(!items.length)return `<div class="group"><div class="empty">Keine Buchungen in diesem Monat</div></div>`;
- return byDay(items).map(([d,list])=>`<section class="day">${dayHead(d,list)}<ul class="group bl">${list.map(([b])=>`<li>
+ const row=b=>`<li>
  <span class="av" style="--h:${hue(o.kat?b.kat:b.person)}">${initial(o.kat?b.kat:b.person)}</span>
  <div class="mid"><div class="t">${o.kat?esc(b.kat):esc(b.nr)}</div><div class="s">${o.kat?`${esc(b.nr)} · ${esc(b.mandant)} · ${esc(b.person)}`:esc(b.person)}</div></div>
- <div class="end"><div class="b">+${eur(b.cents)}</div><div class="act"><button data-edit="${b.id}">Bearbeiten</button><button class="del" data-del="${b.id}">Löschen</button></div></div></li>`).join('')}</ul></section>`).join('')}
+ <div class="end"><div class="b">+${eur(b.cents)}</div><div class="act"><button data-edit="${b.id}">Bearbeiten</button><button class="del" data-del="${b.id}">Löschen</button></div></div></li>`;
+ return byDay(items).map(([d,list])=>`<section class="day">${dayHead(d,list)}${byPerson(list).map(([p,rows])=>{const sum=rows.reduce((s,[b])=>s+(Number.isFinite(b.cents)?b.cents:0),0);
+  return `<div class="pblock"><div class="ph"><span class="av" style="--h:${hue(p)}">${initial(p)}</span><span class="pn">${esc(p)}</span><span class="ps">${plural(rows.length,'Buchung','Buchungen')} · <b>${eur(sum)}</b></span></div><ul class="group bl">${rows.map(([b])=>row(b)).join('')}</ul></div>`}).join('')}</section>`).join('')}
 let katView=null;
 function renderKat(){const el=$('#tab-kat');if(!katView){el.hidden=true;return}
  const items=monthItems().filter(b=>b.mandant===katView.m&&b.kat===katView.k);const sum=items.reduce((s,b)=>s+b.cents,0);
